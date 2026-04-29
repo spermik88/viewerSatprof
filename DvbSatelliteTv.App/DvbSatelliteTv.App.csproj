@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DvbSatelliteTv.Core\DvbSatelliteTv.Core.csproj" />
+    <ProjectReference Include="..\DvbSatelliteTv.Device\DvbSatelliteTv.Device.csproj" />
+    <ProjectReference Include="..\DvbSatelliteTv.Storage\DvbSatelliteTv.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Data\hotbird-13e-transponders.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\bin\Debug\net8.0\DvbSatelliteTv.Device.deps.json
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\bin\Debug\net8.0\DvbSatelliteTv.Device.dll
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\bin\Debug\net8.0\DvbSatelliteTv.Device.pdb
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\bin\Debug\net8.0\DvbSatelliteTv.Core.dll
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\bin\Debug\net8.0\DvbSatelliteTv.Core.pdb
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.csproj.AssemblyReference.cache
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.AssemblyInfoInputs.cache
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.AssemblyInfo.cs
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.csproj.CoreCompileInputs.cache
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatel.F188A108.Up2Date
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.dll
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\refint\DvbSatelliteTv.Device.dll
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\DvbSatelliteTv.Device.pdb
+C:\Users\bebra\Documents\New project\DvbSatelliteTv.Device\obj\Debug\net8.0\ref\DvbSatelliteTv.Device.dll

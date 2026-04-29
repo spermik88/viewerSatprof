@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DvbSatelliteTv.App/DvbSatelliteTv.App.csproj" />
+  <Project Path="DvbSatelliteTv.Core/DvbSatelliteTv.Core.csproj" />
+  <Project Path="DvbSatelliteTv.Device/DvbSatelliteTv.Device.csproj" />
+  <Project Path="DvbSatelliteTv.Storage/DvbSatelliteTv.Storage.csproj" />
+</Solution>
