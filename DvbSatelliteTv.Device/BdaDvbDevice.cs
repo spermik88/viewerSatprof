@@ -9,20 +9,20 @@ public sealed class BdaDvbDevice : IDvbDevice
     private readonly ITransportStreamRecorder _recorder;
     private readonly ITransportStreamParser _parser;
     private readonly string _captureDirectory;
-    private readonly int _captureSeconds;
+    private readonly Func<ReceiverSettings> _settingsProvider;
 
     public BdaDvbDevice(
         IBdaDeviceDetector detector,
         ITransportStreamRecorder recorder,
         ITransportStreamParser parser,
         string captureDirectory,
-        int captureSeconds = 8)
+        Func<ReceiverSettings>? settingsProvider = null)
     {
         _detector = detector;
         _recorder = recorder;
         _parser = parser;
         _captureDirectory = captureDirectory;
-        _captureSeconds = captureSeconds;
+        _settingsProvider = settingsProvider ?? (() => ReceiverSettings.Default);
     }
 
     public async Task<DeviceInfo> GetDeviceInfoAsync(CancellationToken cancellationToken = default)
@@ -76,17 +76,18 @@ public sealed class BdaDvbDevice : IDvbDevice
             var outputPath = Path.Combine(
                 _captureDirectory,
                 $"scan-{DateTime.Now:yyyyMMdd-HHmmss}-{transponder.FrequencyMhz}-{transponder.Polarization}.ts");
+            var settings = _settingsProvider();
 
             var capture = await _recorder.RecordAsync(new TsCaptureRequest(
                 new TuneRequest(
                     transponder.FrequencyMhz,
                     transponder.SymbolRateKsps,
                     transponder.Polarization,
-                    LnbLowMhz: 9750,
-                    LnbHighMhz: 10600,
-                    SwitchMhz: 11700),
+                    settings.LnbLowMhz,
+                    settings.LnbHighMhz,
+                    settings.LnbSwitchMhz),
                 outputPath,
-                _captureSeconds), cancellationToken);
+                settings.CaptureSeconds), cancellationToken);
 
             if (!capture.Success)
             {

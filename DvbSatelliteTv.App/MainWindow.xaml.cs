@@ -16,10 +16,12 @@ public partial class MainWindow : Window
     private readonly ITransportStreamRecorder _transportStreamRecorder = new BdaTransportStreamRecorder();
     private readonly ChannelStore _channelStore;
     private readonly TransponderStore _transponderStore;
+    private readonly ReceiverSettingsStore _settingsStore;
     private readonly List<Transponder> _transponders = [];
     private readonly List<Channel> _channels = [];
     private readonly List<BdaFilterInfo> _bdaFilters = [];
     private CancellationTokenSource? _scanCancellation;
+    private ReceiverSettings _settings = ReceiverSettings.Default;
 
     public MainWindow()
     {
@@ -31,13 +33,15 @@ public partial class MainWindow : Window
             _bdaDeviceDetector,
             _transportStreamRecorder,
             _transportStreamParser,
-            System.IO.Path.Combine(appDataPath, "scan-captures"));
+            System.IO.Path.Combine(appDataPath, "scan-captures"),
+            () => _settings);
         _tuneMonitor = new BdaTuneMonitor(_bdaDeviceDetector);
         var bundledTranspondersPath = System.IO.Path.Combine(
             AppContext.BaseDirectory,
             "Data",
             HotbirdDefaults.TransponderFileName);
         _channelStore = new ChannelStore(System.IO.Path.Combine(appDataPath, "channels-hotbird-13e.json"));
+        _settingsStore = new ReceiverSettingsStore(System.IO.Path.Combine(appDataPath, "receiver-settings.json"));
         _transponderStore = new TransponderStore(
             System.IO.Path.Combine(appDataPath, HotbirdDefaults.TransponderFileName),
             bundledTranspondersPath);
@@ -45,12 +49,15 @@ public partial class MainWindow : Window
         TranspondersGrid.ItemsSource = _transponders;
         ChannelsGrid.ItemsSource = _channels;
         BdaFiltersGrid.ItemsSource = _bdaFilters;
-        Log("Application started in simulator mode.");
+        Log("Application started in BDA mode.");
         Loaded += MainWindow_Loaded;
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        _settings = await _settingsStore.LoadAsync();
+        ApplySettingsToUi(_settings);
+
         var transponders = await _transponderStore.LoadOrSeedAsync();
         _transponders.Clear();
         _transponders.AddRange(transponders);
@@ -61,7 +68,7 @@ public partial class MainWindow : Window
         _channels.AddRange(savedChannels);
         ChannelsGrid.Items.Refresh();
 
-        Log($"Loaded {_transponders.Count} transponders and {_channels.Count} saved channels.");
+        Log($"Loaded {_transponders.Count} transponders, {_channels.Count} saved channels, and receiver settings.");
     }
 
     private async void DetectButton_Click(object sender, RoutedEventArgs e)
@@ -110,6 +117,12 @@ public partial class MainWindow : Window
 
         try
         {
+            if (!UpdateSettingsFromUi())
+            {
+                Log("Scan was not started: receiver settings are invalid.");
+                return;
+            }
+
             Log($"Scan started: {HotbirdDefaults.Satellite.Name}, {_transponders.Count} transponders.");
             var completed = 0;
             var total = Math.Max(_transponders.Count, 1);
@@ -184,13 +197,19 @@ public partial class MainWindow : Window
 
         try
         {
+            if (!UpdateSettingsFromUi())
+            {
+                Log("Tune was not started: receiver settings are invalid.");
+                return;
+            }
+
             var result = await _tuneMonitor.TuneAsync(new TuneRequest(
                 transponder.FrequencyMhz,
                 transponder.SymbolRateKsps,
                 transponder.Polarization,
-                LnbLowMhz: 9750,
-                LnbHighMhz: 10600,
-                SwitchMhz: 11700));
+                _settings.LnbLowMhz,
+                _settings.LnbHighMhz,
+                _settings.LnbSwitchMhz));
 
             TuneIfText.Text = $"{result.IntermediateFrequencyMhz} MHz";
             TuneToneText.Text = result.Use22KhzTone ? "On" : "Off";
@@ -220,7 +239,16 @@ public partial class MainWindow : Window
     {
         await _channelStore.SaveAsync(_channels);
         await _transponderStore.SaveAsync(_transponders);
-        Log($"Saved {_channels.Count} channels and {_transponders.Count} transponders to local app data.");
+        if (TryReadSettings(out var settings))
+        {
+            _settings = settings;
+            await _settingsStore.SaveAsync(_settings);
+            Log($"Saved {_channels.Count} channels, {_transponders.Count} transponders, and receiver settings to local app data.");
+        }
+        else
+        {
+            Log("Channels and transponders were saved, but receiver settings are invalid and were not saved.");
+        }
     }
 
     private async void ParseTsButton_Click(object sender, RoutedEventArgs e)
@@ -284,6 +312,12 @@ public partial class MainWindow : Window
 
         try
         {
+            if (!UpdateSettingsFromUi())
+            {
+                Log("TS recording was not started: receiver settings are invalid.");
+                return;
+            }
+
             var capturePath = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "DvbSatelliteTv",
@@ -296,11 +330,11 @@ public partial class MainWindow : Window
                     transponder.FrequencyMhz,
                     transponder.SymbolRateKsps,
                     transponder.Polarization,
-                    LnbLowMhz: 9750,
-                    LnbHighMhz: 10600,
-                    SwitchMhz: 11700),
+                    _settings.LnbLowMhz,
+                    _settings.LnbHighMhz,
+                    _settings.LnbSwitchMhz),
                 capturePath,
-                DurationSeconds: 8));
+                _settings.CaptureSeconds));
 
             foreach (var diagnostic in result.Diagnostics)
             {
@@ -369,6 +403,46 @@ public partial class MainWindow : Window
 
         var polarization = PolarizationBox.SelectedIndex == 0 ? Polarization.Horizontal : Polarization.Vertical;
         transponder = new Transponder(frequency, symbolRate, polarization, "DVB-S/S2", "Auto", "Manual");
+        return true;
+    }
+
+    private bool TryReadSettings(out ReceiverSettings settings)
+    {
+        settings = _settings;
+
+        if (!int.TryParse(LnbLowBox.Text, out var lnbLow)
+            || !int.TryParse(LnbHighBox.Text, out var lnbHigh)
+            || !int.TryParse(LnbSwitchBox.Text, out var lnbSwitch)
+            || !int.TryParse(CaptureSecondsBox.Text, out var captureSeconds))
+        {
+            return false;
+        }
+
+        if (lnbLow <= 0 || lnbHigh <= 0 || lnbSwitch <= 0 || captureSeconds <= 0 || captureSeconds > 120)
+        {
+            return false;
+        }
+
+        settings = new ReceiverSettings(lnbLow, lnbHigh, lnbSwitch, captureSeconds);
+        return true;
+    }
+
+    private void ApplySettingsToUi(ReceiverSettings settings)
+    {
+        LnbLowBox.Text = settings.LnbLowMhz.ToString();
+        LnbHighBox.Text = settings.LnbHighMhz.ToString();
+        LnbSwitchBox.Text = settings.LnbSwitchMhz.ToString();
+        CaptureSecondsBox.Text = settings.CaptureSeconds.ToString();
+    }
+
+    private bool UpdateSettingsFromUi()
+    {
+        if (!TryReadSettings(out var settings))
+        {
+            return false;
+        }
+
+        _settings = settings;
         return true;
     }
 

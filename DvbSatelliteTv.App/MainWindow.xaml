@@ -47,6 +47,24 @@
                                 <TextBox x:Name="SymbolRateBox" Text="27500" Height="28" />
                             </StackPanel>
                         </UniformGrid>
+                        <UniformGrid Columns="4" Margin="0,8,0,0">
+                            <StackPanel Margin="0,0,6,0">
+                                <TextBlock Text="LNB low" Foreground="#52616F" />
+                                <TextBox x:Name="LnbLowBox" Text="9750" Height="28" />
+                            </StackPanel>
+                            <StackPanel Margin="6,0,6,0">
+                                <TextBlock Text="LNB high" Foreground="#52616F" />
+                                <TextBox x:Name="LnbHighBox" Text="10600" Height="28" />
+                            </StackPanel>
+                            <StackPanel Margin="6,0,6,0">
+                                <TextBlock Text="Switch" Foreground="#52616F" />
+                                <TextBox x:Name="LnbSwitchBox" Text="11700" Height="28" />
+                            </StackPanel>
+                            <StackPanel Margin="6,0,0,0">
+                                <TextBlock Text="Capture s" Foreground="#52616F" />
+                                <TextBox x:Name="CaptureSecondsBox" Text="8" Height="28" />
+                            </StackPanel>
+                        </UniformGrid>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
                             <ComboBox x:Name="PolarizationBox" Width="96" Height="28" SelectedIndex="1" Margin="0,0,8,0">
                                 <ComboBoxItem Content="Horizontal" />

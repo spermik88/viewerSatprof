@@ -48,6 +48,15 @@ public sealed record TuneRequest(
     int LnbHighMhz,
     int SwitchMhz);
 
+public sealed record ReceiverSettings(
+    int LnbLowMhz,
+    int LnbHighMhz,
+    int LnbSwitchMhz,
+    int CaptureSeconds)
+{
+    public static ReceiverSettings Default { get; } = new(9750, 10600, 11700, 8);
+}
+
 public sealed record TuneResult(
     bool CanTune,
     string Stage,

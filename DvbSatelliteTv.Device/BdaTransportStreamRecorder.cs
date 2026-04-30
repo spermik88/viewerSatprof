@@ -21,6 +21,8 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
         IBaseFilter? tuner = null;
         IBaseFilter? transport = null;
         IBaseFilter? fileWriter = null;
+        IMediaControl? mediaControl = null;
+        var graphStarted = false;
 
         try
         {
@@ -61,11 +63,13 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             TryConnectOrThrow(graph, transport, fileWriter, diagnostics, "TS Capture -> FileWriter");
             SubmitTuneRequest(networkProvider, request.TuneRequest, diagnostics);
 
-            var mediaControl = (IMediaControl)graph;
+            mediaControl = (IMediaControl)graph;
             DsError.ThrowExceptionForHR(mediaControl.Run());
+            graphStarted = true;
             diagnostics.Add($"Recording graph running for {request.DurationSeconds} second(s).");
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, request.DurationSeconds)), cancellationToken);
             mediaControl.Stop();
+            graphStarted = false;
             diagnostics.Add("Recording graph stopped.");
 
             var bytesWritten = File.Exists(request.OutputPath) ? new FileInfo(request.OutputPath).Length : 0;
@@ -80,6 +84,19 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
         }
         finally
         {
+            if (graphStarted && mediaControl is not null)
+            {
+                try
+                {
+                    mediaControl.Stop();
+                    diagnostics.Add("Recording graph stopped during cleanup.");
+                }
+                catch (Exception ex)
+                {
+                    diagnostics.Add($"Recording graph cleanup stop failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
             ReleaseCom(fileWriter);
             ReleaseCom(transport);
             ReleaseCom(tuner);

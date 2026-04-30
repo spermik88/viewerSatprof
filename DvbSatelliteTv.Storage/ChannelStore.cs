@@ -88,6 +88,44 @@ public sealed class TransponderStore
     }
 }
 
+public sealed class ReceiverSettingsStore
+{
+    private static readonly JsonSerializerOptions Options = JsonOptionsFactory.CreateJsonOptions();
+    private readonly string _path;
+
+    public ReceiverSettingsStore(string path)
+    {
+        _path = path;
+    }
+
+    public async Task<ReceiverSettings> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_path))
+        {
+            await SaveAsync(ReceiverSettings.Default, cancellationToken);
+            return ReceiverSettings.Default;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(_path);
+            return await JsonSerializer.DeserializeAsync<ReceiverSettings>(stream, Options, cancellationToken)
+                ?? ReceiverSettings.Default;
+        }
+        catch
+        {
+            return ReceiverSettings.Default;
+        }
+    }
+
+    public async Task SaveAsync(ReceiverSettings settings, CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        await using var stream = File.Create(_path);
+        await JsonSerializer.SerializeAsync(stream, settings, Options, cancellationToken);
+    }
+}
+
 file static class JsonOptionsFactory
 {
     public static JsonSerializerOptions CreateJsonOptions()
