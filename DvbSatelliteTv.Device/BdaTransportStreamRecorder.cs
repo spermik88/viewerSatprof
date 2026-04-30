@@ -58,10 +58,15 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             diagnostics.Add($"FileWriter added: {request.OutputPath}");
             DirectShowDiagnostics.DumpPins(fileWriter, "TS File Writer", diagnostics);
 
-            TryConnectOrThrow(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
+            var networkProviderConnected = TryConnect(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner pre-tune");
+            SubmitTuneRequest(networkProvider, request.TuneRequest, diagnostics);
+            if (!networkProviderConnected)
+            {
+                TryConnectOrThrow(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
+            }
+
             TryConnectOrThrow(graph, tuner, transport, diagnostics, "Tuner -> TS Capture");
             TryConnectOrThrow(graph, transport, fileWriter, diagnostics, "TS Capture -> FileWriter");
-            SubmitTuneRequest(networkProvider, request.TuneRequest, diagnostics);
 
             mediaControl = (IMediaControl)graph;
             DsError.ThrowExceptionForHR(mediaControl.Run());
@@ -106,6 +111,37 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
     }
 
     [SupportedOSPlatform("windows")]
+    private static bool TryConnect(IGraphBuilder graph, IBaseFilter upstream, IBaseFilter downstream, List<string> diagnostics, string label)
+    {
+        var outputPin = DsFindPin.ByDirection(upstream, PinDirection.Output, 0);
+        var inputPin = DsFindPin.ByDirection(downstream, PinDirection.Input, 0);
+
+        try
+        {
+            if (outputPin is null || inputPin is null)
+            {
+                diagnostics.Add($"{label}: pin lookup failed.");
+                return false;
+            }
+
+            var hr = graph.Connect(outputPin, inputPin);
+            if (hr == 0)
+            {
+                diagnostics.Add($"{label}: connected.");
+                return true;
+            }
+
+            diagnostics.Add($"{label}: Connect returned 0x{hr:X8}.");
+            return false;
+        }
+        finally
+        {
+            ReleaseCom(outputPin);
+            ReleaseCom(inputPin);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
     private static void SubmitTuneRequest(IBaseFilter networkProvider, DvbSatelliteTv.Core.TuneRequest request, List<string> diagnostics)
     {
         if (networkProvider is not ITuner tuner)
@@ -119,6 +155,7 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
 
         try
         {
+            diagnostics.Add("Tune request: creating DVB-S tuning space.");
             tuningSpace = (IDVBSTuningSpace)new DVBSTuningSpace();
             DsError.ThrowExceptionForHR(tuningSpace.put_UniqueName("ViewerSatprof Hotbird 13E Recorder"));
             DsError.ThrowExceptionForHR(tuningSpace.put_FriendlyName("ViewerSatprof DVB-S/S2 Recorder"));
@@ -128,6 +165,7 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             DsError.ThrowExceptionForHR(tuningSpace.put_HighOscillator(request.LnbHighMhz * 1000));
             DsError.ThrowExceptionForHR(tuningSpace.put_LNBSwitch(request.SwitchMhz * 1000));
 
+            diagnostics.Add("Tune request: creating DVB-S locator.");
             locator = (IDVBSLocator)new DVBSLocator();
             DsError.ThrowExceptionForHR(locator.put_CarrierFrequency(request.FrequencyMhz * 1000));
             DsError.ThrowExceptionForHR(locator.put_SymbolRate(request.SymbolRateKsps));
@@ -140,11 +178,17 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             DsError.ThrowExceptionForHR(locator.put_OrbitalPosition(130));
             DsError.ThrowExceptionForHR(locator.put_WestPosition(false));
 
+            diagnostics.Add("Tune request: assigning default locator.");
             DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).put_DefaultLocator(locator));
+            diagnostics.Add("Tune request: assigning tuning space to network provider.");
             DsError.ThrowExceptionForHR(tuner.put_TuningSpace((ITuningSpace)tuningSpace));
+            diagnostics.Add("Tune request: creating tune request.");
             DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).CreateTuneRequest(out tuneRequest));
+            diagnostics.Add("Tune request: assigning locator.");
             DsError.ThrowExceptionForHR(tuneRequest.put_Locator(locator));
+            diagnostics.Add("Tune request: validating.");
             DsError.ThrowExceptionForHR(tuner.Validate(tuneRequest));
+            diagnostics.Add("Tune request: submitting to network provider.");
             DsError.ThrowExceptionForHR(tuner.put_TuneRequest(tuneRequest));
             diagnostics.Add($"Tune request submitted: {request.FrequencyMhz} MHz {request.Polarization}, SR {request.SymbolRateKsps} KS/s.");
         }
@@ -197,13 +241,100 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             }
 
             var hr = graph.Connect(outputPin, inputPin);
-            DsError.ThrowExceptionForHR(hr);
+            if (hr != 0)
+            {
+                diagnostics.Add($"{label}: connect failed with 0x{hr:X8}.");
+                DirectShowDiagnostics.DumpPinMediaTypes(outputPin, $"{label} upstream", diagnostics);
+                DirectShowDiagnostics.DumpPinMediaTypes(inputPin, $"{label} downstream", diagnostics);
+
+                hr = TryConnectDirectWithPinTypes(graph, outputPin, inputPin, diagnostics, label);
+                if (hr != 0)
+                {
+                    DsError.ThrowExceptionForHR(hr);
+                }
+            }
+
             diagnostics.Add($"{label}: connected.");
         }
         finally
         {
             ReleaseCom(outputPin);
             ReleaseCom(inputPin);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static int TryConnectDirectWithPinTypes(
+        IGraphBuilder graph,
+        IPin outputPin,
+        IPin inputPin,
+        List<string> diagnostics,
+        string label)
+    {
+        var hr = graph.ConnectDirect(outputPin, inputPin, null!);
+        diagnostics.Add($"{label}: ConnectDirect without media type returned 0x{hr:X8}.");
+        if (hr == 0)
+        {
+            return 0;
+        }
+
+        hr = TryConnectDirectWithEnumeratedTypes(graph, outputPin, inputPin, inputPin, diagnostics, $"{label} downstream");
+        if (hr == 0)
+        {
+            return 0;
+        }
+
+        return TryConnectDirectWithEnumeratedTypes(graph, outputPin, inputPin, outputPin, diagnostics, $"{label} upstream");
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static int TryConnectDirectWithEnumeratedTypes(
+        IGraphBuilder graph,
+        IPin outputPin,
+        IPin inputPin,
+        IPin mediaTypeSourcePin,
+        List<string> diagnostics,
+        string label)
+    {
+        IEnumMediaTypes? enumMediaTypes = null;
+        var lastHr = -1;
+
+        try
+        {
+            var hr = mediaTypeSourcePin.EnumMediaTypes(out enumMediaTypes);
+            if (hr != 0 || enumMediaTypes is null)
+            {
+                diagnostics.Add($"{label}: cannot enumerate media types for ConnectDirect, 0x{hr:X8}.");
+                return hr;
+            }
+
+            var mediaTypes = new AMMediaType[1];
+            var index = 0;
+            while (enumMediaTypes.Next(1, mediaTypes, IntPtr.Zero) == 0)
+            {
+                var mediaType = mediaTypes[0];
+                try
+                {
+                    lastHr = graph.ConnectDirect(outputPin, inputPin, mediaType);
+                    diagnostics.Add($"{label}: ConnectDirect media[{index}] returned 0x{lastHr:X8}.");
+                    if (lastHr == 0)
+                    {
+                        return 0;
+                    }
+                }
+                finally
+                {
+                    DsUtils.FreeAMMediaType(mediaType);
+                }
+
+                index++;
+            }
+
+            return lastHr;
+        }
+        finally
+        {
+            ReleaseCom(enumMediaTypes);
         }
     }
 
