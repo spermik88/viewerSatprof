@@ -9,6 +9,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Manual Hotbird 13E transponder list is loaded from JSON.
 - Manual transponder entry is available.
 - Selected transponders can be copied into the tune fields and scanned independently with `Scan Selected`.
+- Selected transponders can be recorded directly with `Record Selected`.
 - Transponder list management includes add, delete selected, and reset to the bundled Hotbird seed list.
 - Tune Monitor calculates IF, 22 kHz tone, LNB 13/18V, builds a BDA graph, submits a DVB-S tune request, starts the graph, and reads lock/signal when the driver exposes it.
 - Scan flow now uses the BDA recording path: tune transponder, record a short TS sample, parse services, and append channels.
@@ -16,6 +17,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Found channels, edited transponders, receiver LNB settings, and capture duration are stored under `%LOCALAPPDATA%\DvbSatelliteTv`.
 - MPEG-TS file parsing is available from the UI through `Parse TS`.
 - BDA TS recording is available from the UI through `Record TS`; it writes a short capture to `%LOCALAPPDATA%\DvbSatelliteTv\captures` and parses it when bytes are produced.
+- The `Cancel` button cancels active scans and single TS recordings.
 - TS recording first tries DirectShow FileWriter and can fall back to a SampleGrabber sink for `BdaMpeg2Transport` streams.
 - Receiver settings are editable in the UI: LNB low/high oscillator, switch frequency, and TS capture duration.
 - Tune, record, and scan diagnostics include DirectShow filter pin dumps for the BDA graph.

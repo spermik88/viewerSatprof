@@ -89,6 +89,11 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             diagnostics.Add($"Bytes written: {bytesWritten}.");
             return new TsCaptureResult(bytesWritten > 0, request.OutputPath, bytesWritten, diagnostics);
         }
+        catch (OperationCanceledException)
+        {
+            diagnostics.Add("TS capture cancelled.");
+            throw;
+        }
         catch (Exception ex)
         {
             diagnostics.Add($"TS capture failed: {ex.GetType().Name}: {ex.Message}");

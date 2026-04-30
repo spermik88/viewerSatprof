@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly List<BdaFilterInfo> _bdaFilters = [];
     private readonly HashSet<string> _channelKeys = [];
     private CancellationTokenSource? _scanCancellation;
+    private CancellationTokenSource? _recordCancellation;
     private ReceiverSettings _settings = ReceiverSettings.Default;
 
     public MainWindow()
@@ -275,7 +276,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        await RecordTransponderAsync(transponder, "manual");
+    }
+
+    private async void RecordSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (TranspondersGrid.SelectedItem is not Transponder transponder)
+        {
+            Log("Selected TS recording was not started: no transponder selected.");
+            return;
+        }
+
+        await RecordTransponderAsync(transponder, "selected");
+    }
+
+    private async Task RecordTransponderAsync(Transponder transponder, string label)
+    {
         RecordTsButton.IsEnabled = false;
+        RecordSelectedButton.IsEnabled = false;
+        CancelScanButton.IsEnabled = true;
+        _recordCancellation = new CancellationTokenSource();
 
         try
         {
@@ -289,7 +309,7 @@ public partial class MainWindow : Window
                 _capturesDirectory,
                 $"hotbird-{DateTime.Now:yyyyMMdd-HHmmss}-{transponder.FrequencyMhz}-{transponder.Polarization}.ts");
 
-            Log($"TS recording started: {capturePath}");
+            Log($"TS recording started ({label}): {capturePath}");
             var result = await _transportStreamRecorder.RecordAsync(new TsCaptureRequest(
                 new TuneRequest(
                     transponder.FrequencyMhz,
@@ -299,7 +319,8 @@ public partial class MainWindow : Window
                     _settings.LnbHighMhz,
                     _settings.LnbSwitchMhz),
                 capturePath,
-                _settings.CaptureSeconds));
+                _settings.CaptureSeconds),
+                _recordCancellation.Token);
 
             foreach (var diagnostic in result.Diagnostics)
             {
@@ -339,6 +360,10 @@ public partial class MainWindow : Window
 
             Log($"Captured TS parse completed: {parseResult.Services.Count} service(s).");
         }
+        catch (OperationCanceledException)
+        {
+            Log("TS recording cancelled.");
+        }
         catch (Exception ex)
         {
             Log($"TS recording failed: {ex.Message}");
@@ -346,12 +371,17 @@ public partial class MainWindow : Window
         finally
         {
             RecordTsButton.IsEnabled = true;
+            RecordSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
+            CancelScanButton.IsEnabled = _scanCancellation is not null;
+            _recordCancellation?.Dispose();
+            _recordCancellation = null;
         }
     }
 
     private void CancelScanButton_Click(object sender, RoutedEventArgs e)
     {
         _scanCancellation?.Cancel();
+        _recordCancellation?.Cancel();
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
@@ -519,12 +549,15 @@ public partial class MainWindow : Window
             ScanButton.IsEnabled = true;
             ScanSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
             CancelScanButton.IsEnabled = false;
+            _scanCancellation?.Dispose();
+            _scanCancellation = null;
         }
     }
 
     private void TranspondersGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         ScanSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && ScanButton.IsEnabled;
+        RecordSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && RecordTsButton.IsEnabled;
         DeleteTransponderButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
 
         if (TranspondersGrid.SelectedItem is not Transponder transponder)
