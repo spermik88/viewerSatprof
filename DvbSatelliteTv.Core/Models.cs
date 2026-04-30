@@ -73,7 +73,12 @@ public sealed record BdaGraphProbeResult(
 
 public sealed record SignalInfo(bool HasLock, int StrengthPercent, int QualityPercent, string Message);
 
-public sealed record ScanProgress(Transponder Transponder, ScanStatus Status, SignalInfo Signal, IReadOnlyList<Channel> Channels);
+public sealed record ScanProgress(
+    Transponder Transponder,
+    ScanStatus Status,
+    SignalInfo Signal,
+    IReadOnlyList<Channel> Channels,
+    IReadOnlyList<string>? Diagnostics = null);
 
 public interface IDvbDevice
 {

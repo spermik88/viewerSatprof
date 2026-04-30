@@ -9,7 +9,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Manual Hotbird 13E transponder list is loaded from JSON.
 - Manual transponder entry is available.
 - Tune Monitor calculates IF, 22 kHz tone, LNB 13/18V, builds a BDA graph, submits a DVB-S tune request, starts the graph, and reads lock/signal when the driver exposes it.
-- Scan flow is still simulated until stable lock and TS capture are verified.
+- Scan flow now uses the BDA recording path: tune transponder, record a short TS sample, parse services, and append channels.
 - Found channels and edited transponders are stored under `%LOCALAPPDATA%\DvbSatelliteTv`.
 - MPEG-TS file parsing is available from the UI through `Parse TS`.
 - BDA TS recording is available from the UI through `Record TS`; it writes a short capture to `%LOCALAPPDATA%\DvbSatelliteTv\captures` and parses it when bytes are produced.
@@ -31,6 +31,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - `DvbSatelliteTv.Device\BdaDeviceDetector.cs` - enumerates BDA Network Tuner, BDA Receiver/TS, and DVB-like Capture filters.
 - `DvbSatelliteTv.Device\BdaGraphBuilder.cs` - creates FilterGraph, adds DVB-S Network Provider, Prof tuner, TS capture, connects pins, submits tune request, runs graph, and reads `IBDA_SignalStatistics`.
 - `DvbSatelliteTv.Device\BdaTransportStreamRecorder.cs` - builds a recording graph and connects Prof TS Capture to DirectShow FileWriter.
+- `DvbSatelliteTv.Device\BdaDvbDevice.cs` - real scan flow over transponders using record TS then parse services.
 - `DvbSatelliteTv.Device\BdaTuneMonitor.cs` - wraps manual tune diagnostics for the UI.
 - `DvbSatelliteTv.Transport\TransportStreamParser.cs` - parses `.ts` files and extracts services from PAT/PMT/SDT.
 - `DvbSatelliteTv.Tests\TransportStreamParserTests.cs` - synthetic TS coverage for PAT/PMT/SDT parsing.
@@ -40,7 +41,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 1. Verify Tune Monitor with a real Hotbird 13E dish and inspect diagnostics.
 2. Verify `Record TS` once a dish is connected and confirm the Prof driver can connect TS Capture to FileWriter directly.
 3. If FileWriter is not accepted by the driver, replace it with a SampleGrabber/custom sink.
-4. Replace `FakeDvbDevice` scan flow with `BdaDvbDevice`.
+4. Verify `Scan Hotbird` with dish signal and tune/record diagnostics.
 5. Connect libVLC for FTA channel preview.
 
 ## Commands

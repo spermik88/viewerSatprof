@@ -24,11 +24,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _device = new BdaDiagnosticDevice(_bdaDeviceDetector);
-        _tuneMonitor = new BdaTuneMonitor(_bdaDeviceDetector);
         var appDataPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "DvbSatelliteTv");
+        _device = new BdaDvbDevice(
+            _bdaDeviceDetector,
+            _transportStreamRecorder,
+            _transportStreamParser,
+            System.IO.Path.Combine(appDataPath, "scan-captures"));
+        _tuneMonitor = new BdaTuneMonitor(_bdaDeviceDetector);
         var bundledTranspondersPath = System.IO.Path.Combine(
             AppContext.BaseDirectory,
             "Data",
@@ -119,6 +123,10 @@ public partial class MainWindow : Window
                 ScanProgressBar.Value = Math.Min(100, completed * 100.0 / total);
                 ScanStatusText.Text = $"{progress.Transponder.FrequencyMhz} MHz {progress.Transponder.Polarization}: {progress.Status}";
                 Log($"{progress.Transponder.FrequencyMhz} {progress.Transponder.Polarization} SR {progress.Transponder.SymbolRateKsps}: {progress.Status}, {progress.Signal.Message}");
+                foreach (var diagnostic in progress.Diagnostics ?? [])
+                {
+                    Log($"Scan: {diagnostic}");
+                }
 
                 foreach (var channel in progress.Channels)
                 {
