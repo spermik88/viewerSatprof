@@ -59,6 +59,8 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             tunerAdded = true;
             diagnostics.Add("Prof BDA tuner filter added.");
             DirectShowDiagnostics.DumpPins(tuner, "Prof BDA Tuner/Demod", diagnostics);
+            BdaTopologyDiagnostics.DumpTunerCapabilities(tuner, diagnostics);
+            BdaTopologyDiagnostics.TryApplyDirectNodeTune(tuner, request, diagnostics);
 
             transport = FindAndCreateFilter(BdaReceiverComponentCategory, "Prof", diagnostics);
             if (transport is null)

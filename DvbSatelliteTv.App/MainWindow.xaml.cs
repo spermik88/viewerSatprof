@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly ChannelStore _channelStore;
     private readonly TransponderStore _transponderStore;
     private readonly ReceiverSettingsStore _settingsStore;
+    private readonly string _diagnosticsDirectory;
     private readonly List<Transponder> _transponders = [];
     private readonly List<Channel> _channels = [];
     private readonly List<BdaFilterInfo> _bdaFilters = [];
@@ -43,6 +44,7 @@ public partial class MainWindow : Window
             HotbirdDefaults.TransponderFileName);
         _channelStore = new ChannelStore(System.IO.Path.Combine(appDataPath, "channels-hotbird-13e.json"));
         _settingsStore = new ReceiverSettingsStore(System.IO.Path.Combine(appDataPath, "receiver-settings.json"));
+        _diagnosticsDirectory = System.IO.Path.Combine(appDataPath, "diagnostics");
         _transponderStore = new TransponderStore(
             System.IO.Path.Combine(appDataPath, HotbirdDefaults.TransponderFileName),
             bundledTranspondersPath);
@@ -255,6 +257,7 @@ public partial class MainWindow : Window
                 Log($"Tune: {diagnostic}");
             }
 
+            await SaveDiagnosticsAsync("tune", result.Diagnostics);
             Log($"Tune monitor result: canTune={result.CanTune}; {result.Signal.Message}");
         }
         catch (Exception ex)
@@ -379,6 +382,7 @@ public partial class MainWindow : Window
                 Log($"Record: {diagnostic}");
             }
 
+            await SaveDiagnosticsAsync("record", result.Diagnostics);
             if (!result.Success)
             {
                 Log($"TS recording did not produce data. Bytes written: {result.BytesWritten}.");
@@ -514,5 +518,13 @@ public partial class MainWindow : Window
     private void Log(string message)
     {
         LogList.Items.Insert(0, $"{DateTime.Now:HH:mm:ss}  {message}");
+    }
+
+    private async Task SaveDiagnosticsAsync(string prefix, IReadOnlyList<string> diagnostics)
+    {
+        System.IO.Directory.CreateDirectory(_diagnosticsDirectory);
+        var path = System.IO.Path.Combine(_diagnosticsDirectory, $"{prefix}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        await System.IO.File.WriteAllLinesAsync(path, diagnostics);
+        Log($"Diagnostics saved: {path}");
     }
 }
