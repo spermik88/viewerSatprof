@@ -7,8 +7,8 @@ namespace DvbSatelliteTv.App;
 
 public partial class MainWindow : Window
 {
-    private readonly IDvbDevice _device = new FakeDvbDevice();
     private readonly IBdaDeviceDetector _bdaDeviceDetector = new BdaDeviceDetector();
+    private readonly IDvbDevice _device;
     private readonly ChannelStore _channelStore;
     private readonly TransponderStore _transponderStore;
     private readonly List<Transponder> _transponders = [];
@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _device = new BdaDiagnosticDevice(_bdaDeviceDetector);
         var appDataPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "DvbSatelliteTv");
