@@ -14,6 +14,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Found channels, edited transponders, receiver LNB settings, and capture duration are stored under `%LOCALAPPDATA%\DvbSatelliteTv`.
 - MPEG-TS file parsing is available from the UI through `Parse TS`.
 - BDA TS recording is available from the UI through `Record TS`; it writes a short capture to `%LOCALAPPDATA%\DvbSatelliteTv\captures` and parses it when bytes are produced.
+- TS recording first tries DirectShow FileWriter and can fall back to a SampleGrabber sink for `BdaMpeg2Transport` streams.
 - Receiver settings are editable in the UI: LNB low/high oscillator, switch frequency, and TS capture duration.
 - Tune, record, and scan diagnostics include DirectShow filter pin dumps for the BDA graph.
 - TS parser currently reads multi-packet PAT, PMT, SDT sections, service name, provider, video PID, audio PIDs, and basic scrambled flag.

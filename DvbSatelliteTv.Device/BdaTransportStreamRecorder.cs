@@ -21,6 +21,10 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
         IBaseFilter? tuner = null;
         IBaseFilter? transport = null;
         IBaseFilter? fileWriter = null;
+        IBaseFilter? sampleGrabberFilter = null;
+        IBaseFilter? nullRenderer = null;
+        TsSampleWriter? sampleWriter = null;
+        FileStream? sampleWriterStream = null;
         IMediaControl? mediaControl = null;
         var graphStarted = false;
 
@@ -52,21 +56,25 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             diagnostics.Add("Prof TS capture/receiver filter added.");
             DirectShowDiagnostics.DumpPins(transport, "Prof TS Capture", diagnostics);
 
-            fileWriter = (IBaseFilter)new FileWriter();
-            DsError.ThrowExceptionForHR(((IFileSinkFilter)fileWriter).SetFileName(request.OutputPath, null!));
-            DsError.ThrowExceptionForHR(graph.AddFilter(fileWriter, "TS File Writer"));
-            diagnostics.Add($"FileWriter added: {request.OutputPath}");
-            DirectShowDiagnostics.DumpPins(fileWriter, "TS File Writer", diagnostics);
-
             var networkProviderConnected = TryConnect(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner pre-tune");
-            SubmitTuneRequest(networkProvider, request.TuneRequest, diagnostics);
+            TrySubmitTuneRequest(networkProvider, request.TuneRequest, diagnostics);
             if (!networkProviderConnected)
             {
-                TryConnectOrThrow(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
+                networkProviderConnected = TryConnect(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner post-tune");
+                if (!networkProviderConnected)
+                {
+                    diagnostics.Add("Network Provider -> Tuner remains disconnected; continuing to validate downstream TS sink path.");
+                }
             }
 
             TryConnectOrThrow(graph, tuner, transport, diagnostics, "Tuner -> TS Capture");
-            TryConnectOrThrow(graph, transport, fileWriter, diagnostics, "TS Capture -> FileWriter");
+
+            if (!TryConnectFileWriter(graph, transport, request.OutputPath, diagnostics, out fileWriter))
+            {
+                sampleWriterStream = File.Create(request.OutputPath);
+                sampleWriter = new TsSampleWriter(sampleWriterStream, diagnostics);
+                ConnectSampleGrabberSink(graph, transport, sampleWriter, diagnostics, out sampleGrabberFilter, out nullRenderer);
+            }
 
             mediaControl = (IMediaControl)graph;
             DsError.ThrowExceptionForHR(mediaControl.Run());
@@ -103,6 +111,9 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             }
 
             ReleaseCom(fileWriter);
+            ReleaseCom(nullRenderer);
+            ReleaseCom(sampleGrabberFilter);
+            sampleWriterStream?.Dispose();
             ReleaseCom(transport);
             ReleaseCom(tuner);
             ReleaseCom(networkProvider);
@@ -142,11 +153,91 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
     }
 
     [SupportedOSPlatform("windows")]
-    private static void SubmitTuneRequest(IBaseFilter networkProvider, DvbSatelliteTv.Core.TuneRequest request, List<string> diagnostics)
+    private static bool TryConnectFileWriter(
+        IGraphBuilder graph,
+        IBaseFilter transport,
+        string outputPath,
+        List<string> diagnostics,
+        out IBaseFilter? fileWriter)
+    {
+        fileWriter = null;
+
+        try
+        {
+            fileWriter = (IBaseFilter)new FileWriter();
+            DsError.ThrowExceptionForHR(((IFileSinkFilter)fileWriter).SetFileName(outputPath, null!));
+            DsError.ThrowExceptionForHR(graph.AddFilter(fileWriter, "TS File Writer"));
+            diagnostics.Add($"FileWriter added: {outputPath}");
+            DirectShowDiagnostics.DumpPins(fileWriter, "TS File Writer", diagnostics);
+            TryConnectOrThrow(graph, transport, fileWriter, diagnostics, "TS Capture -> FileWriter");
+            diagnostics.Add("TS recorder sink: FileWriter.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"FileWriter sink failed: {ex.GetType().Name}: {ex.Message}");
+            if (fileWriter is not null)
+            {
+                graph.RemoveFilter(fileWriter);
+                ReleaseCom(fileWriter);
+                fileWriter = null;
+            }
+
+            return false;
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void ConnectSampleGrabberSink(
+        IGraphBuilder graph,
+        IBaseFilter transport,
+        TsSampleWriter sampleWriter,
+        List<string> diagnostics,
+        out IBaseFilter sampleGrabberFilter,
+        out IBaseFilter nullRenderer)
+    {
+        var sampleGrabber = (ISampleGrabber)new SampleGrabber();
+        sampleGrabberFilter = (IBaseFilter)sampleGrabber;
+        nullRenderer = (IBaseFilter)new NullRenderer();
+
+        var mediaType = new AMMediaType
+        {
+            majorType = MediaType.Stream,
+            subType = MediaSubType.BdaMpeg2Transport,
+            formatType = FormatType.None,
+            fixedSizeSamples = true,
+            sampleSize = 188
+        };
+
+        try
+        {
+            DsError.ThrowExceptionForHR(sampleGrabber.SetMediaType(mediaType));
+            DsError.ThrowExceptionForHR(sampleGrabber.SetBufferSamples(false));
+            DsError.ThrowExceptionForHR(sampleGrabber.SetOneShot(false));
+            DsError.ThrowExceptionForHR(sampleGrabber.SetCallback(sampleWriter, 1));
+            DsError.ThrowExceptionForHR(graph.AddFilter(sampleGrabberFilter, "TS Sample Grabber"));
+            DsError.ThrowExceptionForHR(graph.AddFilter(nullRenderer, "TS Null Renderer"));
+            diagnostics.Add("SampleGrabber sink added for BDA MPEG-2 transport.");
+            DirectShowDiagnostics.DumpPins(sampleGrabberFilter, "TS Sample Grabber", diagnostics);
+            DirectShowDiagnostics.DumpPins(nullRenderer, "TS Null Renderer", diagnostics);
+
+            TryConnectOrThrow(graph, transport, sampleGrabberFilter, diagnostics, "TS Capture -> SampleGrabber");
+            TryConnectOrThrow(graph, sampleGrabberFilter, nullRenderer, diagnostics, "SampleGrabber -> NullRenderer");
+            diagnostics.Add("TS recorder sink: SampleGrabber.");
+        }
+        finally
+        {
+            DsUtils.FreeAMMediaType(mediaType);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TrySubmitTuneRequest(IBaseFilter networkProvider, DvbSatelliteTv.Core.TuneRequest request, List<string> diagnostics)
     {
         if (networkProvider is not ITuner tuner)
         {
-            throw new InvalidOperationException("Network Provider does not expose ITuner.");
+            diagnostics.Add("Network Provider does not expose ITuner.");
+            return false;
         }
 
         IDVBSTuningSpace? tuningSpace = null;
@@ -191,6 +282,12 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             diagnostics.Add("Tune request: submitting to network provider.");
             DsError.ThrowExceptionForHR(tuner.put_TuneRequest(tuneRequest));
             diagnostics.Add($"Tune request submitted: {request.FrequencyMhz} MHz {request.Polarization}, SR {request.SymbolRateKsps} KS/s.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"Tune request failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
         }
         finally
         {
@@ -351,6 +448,44 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
         if (comObject is not null && Marshal.IsComObject(comObject))
         {
             Marshal.ReleaseComObject(comObject);
+        }
+    }
+
+    private sealed class TsSampleWriter : ISampleGrabberCB
+    {
+        private readonly Stream _stream;
+        private readonly List<string> _diagnostics;
+        private long _bytesWritten;
+
+        public TsSampleWriter(Stream stream, List<string> diagnostics)
+        {
+            _stream = stream;
+            _diagnostics = diagnostics;
+        }
+
+        public int SampleCB(double sampleTime, IMediaSample sample)
+        {
+            return 0;
+        }
+
+        public int BufferCB(double sampleTime, IntPtr buffer, int bufferLength)
+        {
+            if (buffer == IntPtr.Zero || bufferLength <= 0)
+            {
+                return 0;
+            }
+
+            var managedBuffer = new byte[bufferLength];
+            Marshal.Copy(buffer, managedBuffer, 0, bufferLength);
+            _stream.Write(managedBuffer, 0, managedBuffer.Length);
+            _bytesWritten += bufferLength;
+
+            if (_bytesWritten == bufferLength)
+            {
+                _diagnostics.Add($"SampleGrabber received first TS buffer: {bufferLength} byte(s).");
+            }
+
+            return 0;
         }
     }
 }
