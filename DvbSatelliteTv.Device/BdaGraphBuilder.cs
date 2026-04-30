@@ -45,6 +45,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             DsError.ThrowExceptionForHR(hr);
             networkProviderAdded = true;
             diagnostics.Add("DVB-S Network Provider added.");
+            DirectShowDiagnostics.DumpPins(networkProvider, "Network Provider", diagnostics);
 
             tuner = FindAndCreateFilter(BdaNetworkTunerCategory, "Prof", diagnostics);
             if (tuner is null)
@@ -57,6 +58,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             DsError.ThrowExceptionForHR(hr);
             tunerAdded = true;
             diagnostics.Add("Prof BDA tuner filter added.");
+            DirectShowDiagnostics.DumpPins(tuner, "Prof BDA Tuner/Demod", diagnostics);
 
             transport = FindAndCreateFilter(BdaReceiverComponentCategory, "Prof", diagnostics);
             if (transport is null)
@@ -69,6 +71,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             DsError.ThrowExceptionForHR(hr);
             transportAdded = true;
             diagnostics.Add("Prof TS capture/receiver filter added.");
+            DirectShowDiagnostics.DumpPins(transport, "Prof TS Capture", diagnostics);
 
             tunerConnected = TryConnect(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
             transportConnected = TryConnect(graph, tuner, transport, diagnostics, "Tuner -> TS Capture");

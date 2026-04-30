@@ -36,21 +36,25 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             networkProvider = (IBaseFilter)new DVBSNetworkProvider();
             DsError.ThrowExceptionForHR(graph.AddFilter(networkProvider, "Microsoft DVB-S Network Provider"));
             diagnostics.Add("DVB-S Network Provider added.");
+            DirectShowDiagnostics.DumpPins(networkProvider, "Network Provider", diagnostics);
 
             tuner = FindAndCreateFilter(BdaNetworkTunerCategory, "Prof", diagnostics)
                 ?? throw new InvalidOperationException("Prof BDA tuner filter was not found.");
             DsError.ThrowExceptionForHR(graph.AddFilter(tuner, "Prof BDA Tuner/Demod"));
             diagnostics.Add("Prof BDA tuner filter added.");
+            DirectShowDiagnostics.DumpPins(tuner, "Prof BDA Tuner/Demod", diagnostics);
 
             transport = FindAndCreateFilter(BdaReceiverComponentCategory, "Prof", diagnostics)
                 ?? throw new InvalidOperationException("Prof TS capture/receiver filter was not found.");
             DsError.ThrowExceptionForHR(graph.AddFilter(transport, "Prof TS Capture"));
             diagnostics.Add("Prof TS capture/receiver filter added.");
+            DirectShowDiagnostics.DumpPins(transport, "Prof TS Capture", diagnostics);
 
             fileWriter = (IBaseFilter)new FileWriter();
             DsError.ThrowExceptionForHR(((IFileSinkFilter)fileWriter).SetFileName(request.OutputPath, null!));
             DsError.ThrowExceptionForHR(graph.AddFilter(fileWriter, "TS File Writer"));
             diagnostics.Add($"FileWriter added: {request.OutputPath}");
+            DirectShowDiagnostics.DumpPins(fileWriter, "TS File Writer", diagnostics);
 
             TryConnectOrThrow(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
             TryConnectOrThrow(graph, tuner, transport, diagnostics, "Tuner -> TS Capture");

@@ -147,6 +147,11 @@ public partial class MainWindow : Window
             ScanStatusText.Text = "Scan cancelled";
             Log("Scan cancelled.");
         }
+        catch (Exception ex)
+        {
+            ScanStatusText.Text = "Scan failed";
+            Log($"Scan failed: {ex.GetType().Name}: {ex.Message}");
+        }
         finally
         {
             ScanButton.IsEnabled = true;
@@ -199,6 +204,11 @@ public partial class MainWindow : Window
             }
 
             Log($"Tune monitor result: canTune={result.CanTune}; {result.Signal.Message}");
+        }
+        catch (Exception ex)
+        {
+            ScanStatusText.Text = "Tune failed";
+            Log($"Tune failed: {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
