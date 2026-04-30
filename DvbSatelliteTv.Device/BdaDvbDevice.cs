@@ -100,7 +100,34 @@ public sealed class BdaDvbDevice : IDvbDevice
                 continue;
             }
 
-            var parsed = await _parser.ParseFileAsync(capture.OutputPath, cancellationToken: cancellationToken);
+            TsParseResult? parsed = null;
+            List<string>? parseFailureDiagnostics = null;
+            try
+            {
+                parsed = await _parser.ParseFileAsync(capture.OutputPath, cancellationToken: cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                parseFailureDiagnostics = capture.Diagnostics
+                    .Concat([$"TS parse failed: {ex.GetType().Name}: {ex.Message}"])
+                    .ToList();
+            }
+
+            if (parsed is null)
+            {
+                yield return new ScanProgress(
+                    transponder,
+                    ScanStatus.Failed,
+                    new SignalInfo(false, 0, 0, $"Captured {capture.BytesWritten} bytes, but TS parsing failed."),
+                    [],
+                    parseFailureDiagnostics ?? capture.Diagnostics);
+                continue;
+            }
+
             var diagnostics = capture.Diagnostics.Concat(parsed.Diagnostics).ToList();
             var channels = parsed.Services
                 .Select(service => new Channel(

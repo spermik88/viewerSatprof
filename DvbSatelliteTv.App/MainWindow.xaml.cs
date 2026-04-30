@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private readonly List<Transponder> _transponders = [];
     private readonly List<Channel> _channels = [];
     private readonly List<BdaFilterInfo> _bdaFilters = [];
+    private readonly HashSet<string> _channelKeys = [];
     private CancellationTokenSource? _scanCancellation;
     private ReceiverSettings _settings = ReceiverSettings.Default;
 
@@ -66,6 +67,7 @@ public partial class MainWindow : Window
         var savedChannels = await _channelStore.LoadAsync();
         _channels.Clear();
         _channels.AddRange(savedChannels);
+        RebuildChannelKeys();
         ChannelsGrid.Items.Refresh();
 
         Log($"Loaded {_transponders.Count} transponders, {_channels.Count} saved channels, and receiver settings.");
@@ -113,6 +115,7 @@ public partial class MainWindow : Window
         ScanProgressBar.Value = 0;
         _scanCancellation = new CancellationTokenSource();
         _channels.Clear();
+        _channelKeys.Clear();
         ChannelsGrid.Items.Refresh();
 
         try
@@ -126,18 +129,35 @@ public partial class MainWindow : Window
             Log($"Scan started: {HotbirdDefaults.Satellite.Name}, {_transponders.Count} transponders.");
             var completed = 0;
             var total = Math.Max(_transponders.Count, 1);
+            var locked = 0;
+            var noSignal = 0;
+            var failed = 0;
+            var addedChannels = 0;
 
             await foreach (var progress in _device.ScanAsync(_transponders, _scanCancellation.Token))
             {
                 if (progress.Status == ScanStatus.Completed)
                 {
                     ScanProgressBar.Value = 100;
-                    ScanStatusText.Text = "Scan completed";
-                    Log("Scan completed.");
+                    ScanStatusText.Text = $"Scan completed: {locked} locked, {noSignal} no signal, {failed} failed, {addedChannels} channel(s)";
+                    Log($"Scan completed: {completed}/{_transponders.Count} transponders, locked={locked}, noSignal={noSignal}, failed={failed}, channels={addedChannels}.");
                     continue;
                 }
 
                 completed++;
+                if (progress.Status == ScanStatus.Locked)
+                {
+                    locked++;
+                }
+                else if (progress.Status == ScanStatus.NoSignal)
+                {
+                    noSignal++;
+                }
+                else if (progress.Status == ScanStatus.Failed)
+                {
+                    failed++;
+                }
+
                 ScanProgressBar.Value = Math.Min(100, completed * 100.0 / total);
                 ScanStatusText.Text = $"{progress.Transponder.FrequencyMhz} MHz {progress.Transponder.Polarization}: {progress.Status}";
                 Log($"{progress.Transponder.FrequencyMhz} {progress.Transponder.Polarization} SR {progress.Transponder.SymbolRateKsps}: {progress.Status}, {progress.Signal.Message}");
@@ -148,7 +168,13 @@ public partial class MainWindow : Window
 
                 foreach (var channel in progress.Channels)
                 {
-                    _channels.Add(channel);
+                    if (!TryAddChannel(channel))
+                    {
+                        Log($"Skipped duplicate channel: {channel.Name}");
+                        continue;
+                    }
+
+                    addedChannels++;
                     Log($"Found FTA channel: {channel.Name}");
                 }
 
@@ -272,15 +298,20 @@ public partial class MainWindow : Window
             var result = await _transportStreamParser.ParseFileAsync(dialog.FileName);
 
             _channels.Clear();
-            _channels.AddRange(result.Services.Select(service => new Channel(
-                service.Name,
-                FrequencyMhz: 0,
-                SymbolRateKsps: 0,
-                Polarization.Vertical,
-                service.ServiceId,
-                service.VideoPid ?? 0,
-                service.AudioPids.FirstOrDefault(),
-                !service.IsScrambled)));
+            _channelKeys.Clear();
+            foreach (var channel in result.Services.Select(service => new Channel(
+                         service.Name,
+                         FrequencyMhz: 0,
+                         SymbolRateKsps: 0,
+                         Polarization.Vertical,
+                         service.ServiceId,
+                         service.VideoPid ?? 0,
+                         service.AudioPids.FirstOrDefault(),
+                         !service.IsScrambled)))
+            {
+                TryAddChannel(channel);
+            }
+
             ChannelsGrid.Items.Refresh();
 
             foreach (var diagnostic in result.Diagnostics)
@@ -350,15 +381,20 @@ public partial class MainWindow : Window
             Log($"TS recording completed: {result.BytesWritten} byte(s). Parsing captured file.");
             var parseResult = await _transportStreamParser.ParseFileAsync(result.OutputPath);
             _channels.Clear();
-            _channels.AddRange(parseResult.Services.Select(service => new Channel(
-                service.Name,
-                transponder.FrequencyMhz,
-                transponder.SymbolRateKsps,
-                transponder.Polarization,
-                service.ServiceId,
-                service.VideoPid ?? 0,
-                service.AudioPids.FirstOrDefault(),
-                !service.IsScrambled)));
+            _channelKeys.Clear();
+            foreach (var channel in parseResult.Services.Select(service => new Channel(
+                         service.Name,
+                         transponder.FrequencyMhz,
+                         transponder.SymbolRateKsps,
+                         transponder.Polarization,
+                         service.ServiceId,
+                         service.VideoPid ?? 0,
+                         service.AudioPids.FirstOrDefault(),
+                         !service.IsScrambled)))
+            {
+                TryAddChannel(channel);
+            }
+
             ChannelsGrid.Items.Refresh();
 
             foreach (var diagnostic in parseResult.Diagnostics)
@@ -386,6 +422,7 @@ public partial class MainWindow : Window
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         _channels.Clear();
+        _channelKeys.Clear();
         ChannelsGrid.Items.Refresh();
         ScanProgressBar.Value = 0;
         ScanStatusText.Text = "Idle";
@@ -404,6 +441,27 @@ public partial class MainWindow : Window
         var polarization = PolarizationBox.SelectedIndex == 0 ? Polarization.Horizontal : Polarization.Vertical;
         transponder = new Transponder(frequency, symbolRate, polarization, "DVB-S/S2", "Auto", "Manual");
         return true;
+    }
+
+    private bool TryAddChannel(Channel channel)
+    {
+        var key = $"{channel.FrequencyMhz}:{channel.Polarization}:{channel.ServiceId}";
+        if (!_channelKeys.Add(key))
+        {
+            return false;
+        }
+
+        _channels.Add(channel);
+        return true;
+    }
+
+    private void RebuildChannelKeys()
+    {
+        _channelKeys.Clear();
+        foreach (var channel in _channels)
+        {
+            _channelKeys.Add($"{channel.FrequencyMhz}:{channel.Polarization}:{channel.ServiceId}");
+        }
     }
 
     private bool TryReadSettings(out ReceiverSettings settings)
