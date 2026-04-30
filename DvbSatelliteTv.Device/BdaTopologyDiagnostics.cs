@@ -49,6 +49,13 @@ internal static class BdaTopologyDiagnostics
 
         try
         {
+            TryCreatePins(topology, diagnostics);
+
+            if (TryCreateTopology(topology, diagnostics))
+            {
+                diagnostics.Add("BDA direct topology creation reported success.");
+            }
+
             foreach (var nodeType in GetNodeTypes(topology, diagnostics))
             {
                 success |= TryApplyDirectNodeTune(topology, nodeType, request, diagnostics);
@@ -75,6 +82,58 @@ internal static class BdaTopologyDiagnostics
 
         diagnostics.Add($"BDA direct node tune completed: success={success}.");
         return success;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void TryCreatePins(IBDA_Topology topology, ICollection<string> diagnostics)
+    {
+        var pinTypes = new int[32];
+        var hr = topology.GetPinTypes(out var pinCount, pinTypes.Length, pinTypes);
+        if (hr != 0)
+        {
+            diagnostics.Add($"BDA direct GetPinTypes for CreatePin failed: hr=0x{hr:X8}.");
+            return;
+        }
+
+        for (var i = 0; i < Math.Min(pinCount, pinTypes.Length); i++)
+        {
+            try
+            {
+                hr = topology.CreatePin(pinTypes[i], out var pinId);
+                diagnostics.Add($"BDA direct CreatePin type={pinTypes[i]}: hr=0x{hr:X8}, pinId={pinId}.");
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"BDA direct CreatePin type={pinTypes[i]}: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryCreateTopology(IBDA_Topology topology, ICollection<string> diagnostics)
+    {
+        var createdAny = false;
+
+        foreach (var connection in GetTemplateConnections(topology, diagnostics))
+        {
+            if (connection.FromNodeType < 0 || connection.ToNodeType < 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                var hr = topology.CreateTopology(connection.FromNodeType, connection.ToNodeType);
+                diagnostics.Add($"BDA direct CreateTopology {connection.FromNodeType}->{connection.ToNodeType}: hr=0x{hr:X8}.");
+                createdAny |= hr == 0;
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"BDA direct CreateTopology {connection.FromNodeType}->{connection.ToNodeType}: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        return createdAny;
     }
 
     private static void DumpSupportedInterface<T>(object instance, ICollection<string> diagnostics)
@@ -155,6 +214,22 @@ internal static class BdaTopologyDiagnostics
         for (var i = 0; i < Math.Min(nodeCount, nodeTypes.Length); i++)
         {
             yield return nodeTypes[i];
+        }
+    }
+
+    private static IEnumerable<BDATemplateConnection> GetTemplateConnections(IBDA_Topology topology, ICollection<string> diagnostics)
+    {
+        var connections = new BDATemplateConnection[64];
+        var hr = topology.GetTemplateConnections(out var connectionCount, connections.Length, connections);
+        if (hr != 0)
+        {
+            diagnostics.Add($"BDA direct GetTemplateConnections failed: hr=0x{hr:X8}.");
+            yield break;
+        }
+
+        for (var i = 0; i < Math.Min(connectionCount, connections.Length); i++)
+        {
+            yield return connections[i];
         }
     }
 

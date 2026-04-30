@@ -19,6 +19,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
 
         var diagnostics = new List<string>();
         IGraphBuilder? graph = null;
+        ICaptureGraphBuilder2? captureGraphBuilder = null;
         IBaseFilter? networkProvider = null;
         IBaseFilter? tuner = null;
         IBaseFilter? transport = null;
@@ -39,9 +40,12 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             graph = (IGraphBuilder)new FilterGraph();
             graphCreated = true;
             diagnostics.Add("FilterGraph created.");
+            captureGraphBuilder = (ICaptureGraphBuilder2)new CaptureGraphBuilder2();
+            var hr = captureGraphBuilder.SetFiltergraph(graph);
+            diagnostics.Add($"CaptureGraphBuilder2 SetFiltergraph returned 0x{hr:X8}.");
 
             networkProvider = (IBaseFilter)new DVBSNetworkProvider();
-            var hr = graph.AddFilter(networkProvider, "Microsoft DVB-S Network Provider");
+            hr = graph.AddFilter(networkProvider, "Microsoft DVB-S Network Provider");
             DsError.ThrowExceptionForHR(hr);
             networkProviderAdded = true;
             diagnostics.Add("DVB-S Network Provider added.");
@@ -76,7 +80,16 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             DirectShowDiagnostics.DumpPins(transport, "Prof TS Capture", diagnostics);
 
             tunerConnected = TryConnect(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
+            if (!tunerConnected && captureGraphBuilder is not null)
+            {
+                tunerConnected = TryRenderStream(captureGraphBuilder, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
+            }
+
             transportConnected = TryConnect(graph, tuner, transport, diagnostics, "Tuner -> TS Capture");
+            if (!transportConnected && captureGraphBuilder is not null)
+            {
+                transportConnected = TryRenderStream(captureGraphBuilder, tuner, transport, diagnostics, "Tuner -> TS Capture");
+            }
 
             tuneRequestSubmitted = TrySubmitTuneRequest(networkProvider, request, diagnostics);
 
@@ -109,6 +122,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             ReleaseCom(transport);
             ReleaseCom(tuner);
             ReleaseCom(networkProvider);
+            ReleaseCom(captureGraphBuilder);
             ReleaseCom(graph);
         }
 
@@ -284,6 +298,33 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
         }
 
         return null;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryRenderStream(
+        ICaptureGraphBuilder2 captureGraphBuilder,
+        IBaseFilter upstream,
+        IBaseFilter downstream,
+        List<string> diagnostics,
+        string label)
+    {
+        try
+        {
+            var hr = captureGraphBuilder.RenderStream(DsGuid.Empty, DsGuid.Empty, upstream, null!, downstream);
+            if (hr == 0)
+            {
+                diagnostics.Add($"{label}: CaptureGraphBuilder2 RenderStream connected.");
+                return true;
+            }
+
+            diagnostics.Add($"{label}: CaptureGraphBuilder2 RenderStream returned 0x{hr:X8}.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"{label}: CaptureGraphBuilder2 RenderStream failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
     }
 
     [SupportedOSPlatform("windows")]
