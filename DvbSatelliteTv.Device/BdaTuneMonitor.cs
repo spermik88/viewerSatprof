@@ -5,10 +5,12 @@ namespace DvbSatelliteTv.Device;
 public sealed class BdaTuneMonitor : ITuneMonitor
 {
     private readonly IBdaDeviceDetector _detector;
+    private readonly IBdaGraphBuilder _graphBuilder;
 
-    public BdaTuneMonitor(IBdaDeviceDetector detector)
+    public BdaTuneMonitor(IBdaDeviceDetector detector, IBdaGraphBuilder? graphBuilder = null)
     {
         _detector = detector;
+        _graphBuilder = graphBuilder ?? new BdaGraphBuilder();
     }
 
     public async Task<TuneResult> TuneAsync(TuneRequest request, CancellationToken cancellationToken = default)
@@ -50,15 +52,22 @@ public sealed class BdaTuneMonitor : ITuneMonitor
         }
 
         diagnostics.Add($"Transport: {transport.FriendlyName}");
-        diagnostics.Add("Ready for BDA graph construction. Real lock is not available until the tuning graph is implemented.");
+        diagnostics.Add("Starting BDA graph probe.");
+        var graphProbe = await _graphBuilder.ProbeAsync(request, cancellationToken);
+        foreach (var graphDiagnostic in graphProbe.Diagnostics)
+        {
+            diagnostics.Add($"Graph: {graphDiagnostic}");
+        }
 
         return CreateResult(
-            true,
-            "Graph preparation",
+            graphProbe.GraphCreated && graphProbe.NetworkProviderAdded && graphProbe.TunerAdded && graphProbe.TransportAdded,
+            graphProbe.TransportConnected ? "Graph connected" : "Graph probe",
             intermediateFrequency,
             useHighBand,
             voltage,
-            "BDA filters are present. Tuning graph implementation is the next step.",
+            graphProbe.TransportConnected
+                ? "BDA graph was built and connected. Tune request submission is the next step."
+                : "BDA filters are present, but graph connection is incomplete. See diagnostics.",
             diagnostics);
     }
 

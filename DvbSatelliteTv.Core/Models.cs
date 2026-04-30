@@ -57,6 +57,15 @@ public sealed record TuneResult(
     SignalInfo Signal,
     IReadOnlyList<string> Diagnostics);
 
+public sealed record BdaGraphProbeResult(
+    bool GraphCreated,
+    bool NetworkProviderAdded,
+    bool TunerAdded,
+    bool TransportAdded,
+    bool TunerConnected,
+    bool TransportConnected,
+    IReadOnlyList<string> Diagnostics);
+
 public sealed record SignalInfo(bool HasLock, int StrengthPercent, int QualityPercent, string Message);
 
 public sealed record ScanProgress(Transponder Transponder, ScanStatus Status, SignalInfo Signal, IReadOnlyList<Channel> Channels);
@@ -78,6 +87,11 @@ public interface IBdaDeviceDetector
 public interface ITuneMonitor
 {
     Task<TuneResult> TuneAsync(TuneRequest request, CancellationToken cancellationToken = default);
+}
+
+public interface IBdaGraphBuilder
+{
+    Task<BdaGraphProbeResult> ProbeAsync(TuneRequest request, CancellationToken cancellationToken = default);
 }
 
 public static class HotbirdDefaults
