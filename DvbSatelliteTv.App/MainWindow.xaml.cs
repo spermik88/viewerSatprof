@@ -144,7 +144,12 @@ public partial class MainWindow : Window
                     continue;
                 }
 
-                completed++;
+                var isFinalTransponderStatus = progress.Status is ScanStatus.Locked or ScanStatus.NoSignal or ScanStatus.Failed;
+                if (isFinalTransponderStatus)
+                {
+                    completed++;
+                }
+
                 if (progress.Status == ScanStatus.Locked)
                 {
                     locked++;
@@ -158,7 +163,9 @@ public partial class MainWindow : Window
                     failed++;
                 }
 
-                ScanProgressBar.Value = Math.Min(100, completed * 100.0 / total);
+                ScanProgressBar.Value = isFinalTransponderStatus
+                    ? Math.Min(100, completed * 100.0 / total)
+                    : ScanProgressBar.Value;
                 ScanStatusText.Text = $"{progress.Transponder.FrequencyMhz} MHz {progress.Transponder.Polarization}: {progress.Status}";
                 Log($"{progress.Transponder.FrequencyMhz} {progress.Transponder.Polarization} SR {progress.Transponder.SymbolRateKsps}: {progress.Status}, {progress.Signal.Message}");
                 foreach (var diagnostic in progress.Diagnostics ?? [])
