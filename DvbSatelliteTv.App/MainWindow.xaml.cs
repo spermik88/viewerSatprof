@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private readonly IDvbDevice _device;
     private readonly ITuneMonitor _tuneMonitor;
     private readonly ITransportStreamParser _transportStreamParser = new TransportStreamParser();
+    private readonly ITransportStreamRecorder _transportStreamRecorder = new BdaTransportStreamRecorder();
     private readonly ChannelStore _channelStore;
     private readonly TransponderStore _transponderStore;
     private readonly List<Transponder> _transponders = [];
@@ -245,6 +246,78 @@ public partial class MainWindow : Window
         finally
         {
             ParseTsButton.IsEnabled = true;
+        }
+    }
+
+    private async void RecordTsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryReadManualTransponder(out var transponder))
+        {
+            Log("TS recording was not started: frequency or symbol rate is invalid.");
+            return;
+        }
+
+        RecordTsButton.IsEnabled = false;
+
+        try
+        {
+            var capturePath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "DvbSatelliteTv",
+                "captures",
+                $"hotbird-{DateTime.Now:yyyyMMdd-HHmmss}-{transponder.FrequencyMhz}-{transponder.Polarization}.ts");
+
+            Log($"TS recording started: {capturePath}");
+            var result = await _transportStreamRecorder.RecordAsync(new TsCaptureRequest(
+                new TuneRequest(
+                    transponder.FrequencyMhz,
+                    transponder.SymbolRateKsps,
+                    transponder.Polarization,
+                    LnbLowMhz: 9750,
+                    LnbHighMhz: 10600,
+                    SwitchMhz: 11700),
+                capturePath,
+                DurationSeconds: 8));
+
+            foreach (var diagnostic in result.Diagnostics)
+            {
+                Log($"Record: {diagnostic}");
+            }
+
+            if (!result.Success)
+            {
+                Log($"TS recording did not produce data. Bytes written: {result.BytesWritten}.");
+                return;
+            }
+
+            Log($"TS recording completed: {result.BytesWritten} byte(s). Parsing captured file.");
+            var parseResult = await _transportStreamParser.ParseFileAsync(result.OutputPath);
+            _channels.Clear();
+            _channels.AddRange(parseResult.Services.Select(service => new Channel(
+                service.Name,
+                transponder.FrequencyMhz,
+                transponder.SymbolRateKsps,
+                transponder.Polarization,
+                service.ServiceId,
+                service.VideoPid ?? 0,
+                service.AudioPids.FirstOrDefault(),
+                !service.IsScrambled)));
+            ChannelsGrid.Items.Refresh();
+
+            foreach (var diagnostic in parseResult.Diagnostics)
+            {
+                Log($"TS: {diagnostic}");
+            }
+
+            Log($"Captured TS parse completed: {parseResult.Services.Count} service(s).");
+        }
+        catch (Exception ex)
+        {
+            Log($"TS recording failed: {ex.Message}");
+        }
+        finally
+        {
+            RecordTsButton.IsEnabled = true;
         }
     }
 

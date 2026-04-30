@@ -12,6 +12,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Scan flow is still simulated until stable lock and TS capture are verified.
 - Found channels and edited transponders are stored under `%LOCALAPPDATA%\DvbSatelliteTv`.
 - MPEG-TS file parsing is available from the UI through `Parse TS`.
+- BDA TS recording is available from the UI through `Record TS`; it writes a short capture to `%LOCALAPPDATA%\DvbSatelliteTv\captures` and parses it when bytes are produced.
 - TS parser currently reads PAT, PMT, SDT, service name, provider, video PID, audio PIDs, and basic scrambled flag.
 - Built-in TV preview is still a placeholder. libVLC will be connected after a live TS path exists.
 
@@ -28,14 +29,15 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 
 - `DvbSatelliteTv.Device\BdaDeviceDetector.cs` - enumerates BDA Network Tuner, BDA Receiver/TS, and DVB-like Capture filters.
 - `DvbSatelliteTv.Device\BdaGraphBuilder.cs` - creates FilterGraph, adds DVB-S Network Provider, Prof tuner, TS capture, connects pins, submits tune request, runs graph, and reads `IBDA_SignalStatistics`.
+- `DvbSatelliteTv.Device\BdaTransportStreamRecorder.cs` - builds a recording graph and connects Prof TS Capture to DirectShow FileWriter.
 - `DvbSatelliteTv.Device\BdaTuneMonitor.cs` - wraps manual tune diagnostics for the UI.
 - `DvbSatelliteTv.Transport\TransportStreamParser.cs` - parses `.ts` files and extracts services from PAT/PMT/SDT.
 
 ## Next Steps
 
 1. Verify Tune Monitor with a real Hotbird 13E dish and inspect diagnostics.
-2. Add a TS capture sink to write a short `.ts` after successful lock.
-3. Connect live TS bytes to `TransportStreamParser`.
+2. Verify `Record TS` once a dish is connected and confirm the Prof driver can connect TS Capture to FileWriter directly.
+3. If FileWriter is not accepted by the driver, replace it with a SampleGrabber/custom sink.
 4. Replace `FakeDvbDevice` scan flow with `BdaDvbDevice`.
 5. Connect libVLC for FTA channel preview.
 
