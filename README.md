@@ -8,6 +8,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Prof/BDA device detection is implemented.
 - Manual Hotbird 13E transponder list is loaded from JSON.
 - Manual transponder entry is available.
+- Selected transponders can be copied into the tune fields and scanned independently with `Scan Selected`.
 - Tune Monitor calculates IF, 22 kHz tone, LNB 13/18V, builds a BDA graph, submits a DVB-S tune request, starts the graph, and reads lock/signal when the driver exposes it.
 - Scan flow now uses the BDA recording path: tune transponder, record a short TS sample, parse services, and append channels.
 - Scan results are summarized in the UI and duplicate channels are filtered by frequency, polarization, and service id.

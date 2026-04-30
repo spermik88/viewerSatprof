@@ -112,99 +112,22 @@ public partial class MainWindow : Window
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
-        ScanButton.IsEnabled = false;
-        CancelScanButton.IsEnabled = true;
-        ScanProgressBar.Value = 0;
-        _scanCancellation = new CancellationTokenSource();
-        _channels.Clear();
-        _channelKeys.Clear();
-        ChannelsGrid.Items.Refresh();
+        await RunScanAsync(_transponders.ToList(), $"{HotbirdDefaults.Satellite.Name}", clearChannels: true);
+    }
 
-        try
+    private async void ScanSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = TranspondersGrid.SelectedItems
+            .OfType<Transponder>()
+            .ToList();
+
+        if (selected.Count == 0)
         {
-            if (!UpdateSettingsFromUi())
-            {
-                Log("Scan was not started: receiver settings are invalid.");
-                return;
-            }
-
-            Log($"Scan started: {HotbirdDefaults.Satellite.Name}, {_transponders.Count} transponders.");
-            var completed = 0;
-            var total = Math.Max(_transponders.Count, 1);
-            var locked = 0;
-            var noSignal = 0;
-            var failed = 0;
-            var addedChannels = 0;
-
-            await foreach (var progress in _device.ScanAsync(_transponders, _scanCancellation.Token))
-            {
-                if (progress.Status == ScanStatus.Completed)
-                {
-                    ScanProgressBar.Value = 100;
-                    ScanStatusText.Text = $"Scan completed: {locked} locked, {noSignal} no signal, {failed} failed, {addedChannels} channel(s)";
-                    Log($"Scan completed: {completed}/{_transponders.Count} transponders, locked={locked}, noSignal={noSignal}, failed={failed}, channels={addedChannels}.");
-                    continue;
-                }
-
-                var isFinalTransponderStatus = progress.Status is ScanStatus.Locked or ScanStatus.NoSignal or ScanStatus.Failed;
-                if (isFinalTransponderStatus)
-                {
-                    completed++;
-                }
-
-                if (progress.Status == ScanStatus.Locked)
-                {
-                    locked++;
-                }
-                else if (progress.Status == ScanStatus.NoSignal)
-                {
-                    noSignal++;
-                }
-                else if (progress.Status == ScanStatus.Failed)
-                {
-                    failed++;
-                }
-
-                ScanProgressBar.Value = isFinalTransponderStatus
-                    ? Math.Min(100, completed * 100.0 / total)
-                    : ScanProgressBar.Value;
-                ScanStatusText.Text = $"{progress.Transponder.FrequencyMhz} MHz {progress.Transponder.Polarization}: {progress.Status}";
-                Log($"{progress.Transponder.FrequencyMhz} {progress.Transponder.Polarization} SR {progress.Transponder.SymbolRateKsps}: {progress.Status}, {progress.Signal.Message}");
-                foreach (var diagnostic in progress.Diagnostics ?? [])
-                {
-                    Log($"Scan: {diagnostic}");
-                }
-
-                foreach (var channel in progress.Channels)
-                {
-                    if (!TryAddChannel(channel))
-                    {
-                        Log($"Skipped duplicate channel: {channel.Name}");
-                        continue;
-                    }
-
-                    addedChannels++;
-                    Log($"Found FTA channel: {channel.Name}");
-                }
-
-                ChannelsGrid.Items.Refresh();
-            }
+            Log("Selected scan was not started: no transponders selected.");
+            return;
         }
-        catch (OperationCanceledException)
-        {
-            ScanStatusText.Text = "Scan cancelled";
-            Log("Scan cancelled.");
-        }
-        catch (Exception ex)
-        {
-            ScanStatusText.Text = "Scan failed";
-            Log($"Scan failed: {ex.GetType().Name}: {ex.Message}");
-        }
-        finally
-        {
-            ScanButton.IsEnabled = true;
-            CancelScanButton.IsEnabled = false;
-        }
+
+        await RunScanAsync(selected, $"{selected.Count} selected transponder(s)", clearChannels: false);
     }
 
     private void AddTransponderButton_Click(object sender, RoutedEventArgs e)
@@ -438,6 +361,130 @@ public partial class MainWindow : Window
         ScanProgressBar.Value = 0;
         ScanStatusText.Text = "Idle";
         Log("Channel list cleared.");
+    }
+
+    private async Task RunScanAsync(IReadOnlyList<Transponder> transponders, string label, bool clearChannels)
+    {
+        if (transponders.Count == 0)
+        {
+            Log("Scan was not started: transponder list is empty.");
+            return;
+        }
+
+        ScanButton.IsEnabled = false;
+        ScanSelectedButton.IsEnabled = false;
+        CancelScanButton.IsEnabled = true;
+        ScanProgressBar.Value = 0;
+        _scanCancellation = new CancellationTokenSource();
+
+        if (clearChannels)
+        {
+            _channels.Clear();
+            _channelKeys.Clear();
+            ChannelsGrid.Items.Refresh();
+        }
+
+        try
+        {
+            if (!UpdateSettingsFromUi())
+            {
+                Log("Scan was not started: receiver settings are invalid.");
+                return;
+            }
+
+            Log($"Scan started: {label}, {transponders.Count} transponder(s).");
+            var completed = 0;
+            var total = Math.Max(transponders.Count, 1);
+            var locked = 0;
+            var noSignal = 0;
+            var failed = 0;
+            var addedChannels = 0;
+
+            await foreach (var progress in _device.ScanAsync(transponders, _scanCancellation.Token))
+            {
+                if (progress.Status == ScanStatus.Completed)
+                {
+                    ScanProgressBar.Value = 100;
+                    ScanStatusText.Text = $"Scan completed: {locked} locked, {noSignal} no signal, {failed} failed, {addedChannels} channel(s)";
+                    Log($"Scan completed: {completed}/{transponders.Count} transponder(s), locked={locked}, noSignal={noSignal}, failed={failed}, channels={addedChannels}.");
+                    continue;
+                }
+
+                var isFinalTransponderStatus = progress.Status is ScanStatus.Locked or ScanStatus.NoSignal or ScanStatus.Failed;
+                if (isFinalTransponderStatus)
+                {
+                    completed++;
+                }
+
+                if (progress.Status == ScanStatus.Locked)
+                {
+                    locked++;
+                }
+                else if (progress.Status == ScanStatus.NoSignal)
+                {
+                    noSignal++;
+                }
+                else if (progress.Status == ScanStatus.Failed)
+                {
+                    failed++;
+                }
+
+                ScanProgressBar.Value = isFinalTransponderStatus
+                    ? Math.Min(100, completed * 100.0 / total)
+                    : ScanProgressBar.Value;
+                ScanStatusText.Text = $"{progress.Transponder.FrequencyMhz} MHz {progress.Transponder.Polarization}: {progress.Status}";
+                Log($"{progress.Transponder.FrequencyMhz} {progress.Transponder.Polarization} SR {progress.Transponder.SymbolRateKsps}: {progress.Status}, {progress.Signal.Message}");
+                foreach (var diagnostic in progress.Diagnostics ?? [])
+                {
+                    Log($"Scan: {diagnostic}");
+                }
+
+                foreach (var channel in progress.Channels)
+                {
+                    if (!TryAddChannel(channel))
+                    {
+                        Log($"Skipped duplicate channel: {channel.Name}");
+                        continue;
+                    }
+
+                    addedChannels++;
+                    Log($"Found FTA channel: {channel.Name}");
+                }
+
+                ChannelsGrid.Items.Refresh();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ScanStatusText.Text = "Scan cancelled";
+            Log("Scan cancelled.");
+        }
+        catch (Exception ex)
+        {
+            ScanStatusText.Text = "Scan failed";
+            Log($"Scan failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            ScanButton.IsEnabled = true;
+            ScanSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
+            CancelScanButton.IsEnabled = false;
+        }
+    }
+
+    private void TranspondersGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        ScanSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && ScanButton.IsEnabled;
+
+        if (TranspondersGrid.SelectedItem is not Transponder transponder)
+        {
+            return;
+        }
+
+        FrequencyBox.Text = transponder.FrequencyMhz.ToString();
+        SymbolRateBox.Text = transponder.SymbolRateKsps.ToString();
+        PolarizationBox.SelectedIndex = transponder.Polarization == Polarization.Horizontal ? 0 : 1;
+        Log($"Selected transponder: {transponder.FrequencyMhz} {transponder.Polarization} SR {transponder.SymbolRateKsps}.");
     }
 
     private bool TryReadManualTransponder(out Transponder transponder)
