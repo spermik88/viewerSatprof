@@ -4,6 +4,7 @@ using DvbSatelliteTv.Core;
 using DvbSatelliteTv.Device;
 using DvbSatelliteTv.Storage;
 using DvbSatelliteTv.Transport;
+using LibVLCSharp.Shared;
 using Microsoft.Win32;
 
 namespace DvbSatelliteTv.App;
@@ -24,6 +25,9 @@ public partial class MainWindow : Window
     private readonly List<Channel> _channels = [];
     private readonly List<BdaFilterInfo> _bdaFilters = [];
     private readonly HashSet<string> _channelKeys = [];
+    private LibVLC? _libVlc;
+    private MediaPlayer? _previewPlayer;
+    private string? _lastCapturePath;
     private CancellationTokenSource? _scanCancellation;
     private CancellationTokenSource? _recordCancellation;
     private ReceiverSettings _settings = ReceiverSettings.Default;
@@ -62,6 +66,8 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        InitializePreview();
+
         _settings = await _settingsStore.LoadAsync();
         ApplySettingsToUi(_settings);
 
@@ -77,6 +83,15 @@ public partial class MainWindow : Window
         ChannelsGrid.Items.Refresh();
 
         Log($"Loaded {_transponders.Count} transponders, {_channels.Count} saved channels, and receiver settings.");
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _previewPlayer?.Stop();
+        PreviewVideoView.MediaPlayer = null;
+        _previewPlayer?.Dispose();
+        _libVlc?.Dispose();
+        base.OnClosed(e);
     }
 
     private async void DetectButton_Click(object sender, RoutedEventArgs e)
@@ -335,6 +350,8 @@ public partial class MainWindow : Window
             }
 
             Log($"TS recording completed: {result.BytesWritten} byte(s). Parsing captured file.");
+            _lastCapturePath = result.OutputPath;
+            PlayPreview(result.OutputPath);
             var parseResult = await _transportStreamParser.ParseFileAsync(result.OutputPath);
             _channels.Clear();
             _channelKeys.Clear();
@@ -441,6 +458,36 @@ public partial class MainWindow : Window
     private void OpenDiagnosticsButton_Click(object sender, RoutedEventArgs e)
     {
         OpenFolder(_diagnosticsDirectory, "diagnostics");
+    }
+
+    private void PlayLastCaptureButton_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _lastCapturePath;
+        if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+        {
+            path = System.IO.Directory.Exists(_capturesDirectory)
+                ? System.IO.Directory.GetFiles(_capturesDirectory, "*.ts")
+                    .OrderByDescending(System.IO.File.GetLastWriteTime)
+                    .FirstOrDefault()
+                : null;
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            Log("Preview was not started: no capture file found.");
+            PreviewStatusText.Text = "No capture file found";
+            return;
+        }
+
+        PlayPreview(path);
+    }
+
+    private void StopPreviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        _previewPlayer?.Stop();
+        PreviewStatusText.Text = "Preview stopped";
+        PreviewStatusText.Visibility = Visibility.Visible;
+        Log("Preview stopped.");
     }
 
     private async Task RunScanAsync(IReadOnlyList<Transponder> transponders, string label, bool clearChannels)
@@ -586,6 +633,55 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log($"Could not open {label} folder: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private void InitializePreview()
+    {
+        try
+        {
+            LibVLCSharp.Shared.Core.Initialize();
+            _libVlc = new LibVLC("--no-video-title-show");
+            _previewPlayer = new MediaPlayer(_libVlc);
+            PreviewVideoView.MediaPlayer = _previewPlayer;
+            PreviewStatusText.Text = "No preview loaded";
+            Log("libVLC preview initialized.");
+        }
+        catch (Exception ex)
+        {
+            PreviewStatusText.Text = "Preview unavailable";
+            Log($"libVLC preview initialization failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private void PlayPreview(string path)
+    {
+        if (_libVlc is null || _previewPlayer is null)
+        {
+            Log("Preview was not started: libVLC is not initialized.");
+            return;
+        }
+
+        if (!System.IO.File.Exists(path))
+        {
+            Log($"Preview was not started: file not found: {path}");
+            return;
+        }
+
+        try
+        {
+            using var media = new Media(_libVlc, new Uri(path));
+            _previewPlayer.Play(media);
+            _lastCapturePath = path;
+            PreviewStatusText.Text = System.IO.Path.GetFileName(path);
+            PreviewStatusText.Visibility = Visibility.Collapsed;
+            Log($"Preview started: {path}");
+        }
+        catch (Exception ex)
+        {
+            PreviewStatusText.Text = "Preview failed";
+            PreviewStatusText.Visibility = Visibility.Visible;
+            Log($"Preview failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
