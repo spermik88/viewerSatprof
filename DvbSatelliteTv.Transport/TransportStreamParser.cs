@@ -9,6 +9,7 @@ public sealed class TransportStreamParser : ITransportStreamParser
     private readonly Dictionary<int, int> _programMapPids = [];
     private readonly Dictionary<int, PmtInfo> _pmts = [];
     private readonly Dictionary<int, SdtInfo> _sdts = [];
+    private readonly Dictionary<int, SectionAssembler> _sectionAssemblers = [];
     private readonly HashSet<string> _diagnostics = [];
 
     public async Task<TsParseResult> ParseFileAsync(string path, int maxPackets = 120000, CancellationToken cancellationToken = default)
@@ -16,6 +17,7 @@ public sealed class TransportStreamParser : ITransportStreamParser
         _programMapPids.Clear();
         _pmts.Clear();
         _sdts.Clear();
+        _sectionAssemblers.Clear();
         _diagnostics.Clear();
 
         var packetsRead = 0;
@@ -88,45 +90,54 @@ public sealed class TransportStreamParser : ITransportStreamParser
             return;
         }
 
-        if (payloadUnitStart)
-        {
-            offset += 1 + packet[offset];
-        }
-
-        if (offset + 3 >= PacketSize)
+        if (offset >= PacketSize)
         {
             return;
         }
 
-        if (pid == 0)
+        foreach (var section in GetAssembler(pid).Push(packet, offset, PacketSize - offset, payloadUnitStart))
         {
-            ParsePat(packet, offset);
-            return;
-        }
+            if (pid == 0)
+            {
+                ParsePat(section);
+                continue;
+            }
 
-        if (pid == 0x11)
-        {
-            ParseSdt(packet, offset);
-            return;
-        }
+            if (pid == 0x11)
+            {
+                ParseSdt(section);
+                continue;
+            }
 
-        var programId = _programMapPids.FirstOrDefault(x => x.Value == pid).Key;
-        if (programId != 0)
-        {
-            ParsePmt(programId, packet, offset);
+            var programId = _programMapPids.FirstOrDefault(x => x.Value == pid).Key;
+            if (programId != 0)
+            {
+                ParsePmt(programId, section);
+            }
         }
     }
 
-    private void ParsePat(byte[] data, int offset)
+    private SectionAssembler GetAssembler(int pid)
     {
-        if (data[offset] != 0x00)
+        if (!_sectionAssemblers.TryGetValue(pid, out var assembler))
+        {
+            assembler = new SectionAssembler();
+            _sectionAssemblers[pid] = assembler;
+        }
+
+        return assembler;
+    }
+
+    private void ParsePat(byte[] data)
+    {
+        if (data[0] != 0x00)
         {
             return;
         }
 
-        var sectionLength = GetSectionLength(data, offset);
-        var end = Math.Min(offset + 3 + sectionLength - 4, PacketSize);
-        var cursor = offset + 8;
+        var sectionLength = GetSectionLength(data, 0);
+        var end = Math.Min(3 + sectionLength - 4, data.Length);
+        var cursor = 8;
 
         while (cursor + 4 <= end)
         {
@@ -141,18 +152,18 @@ public sealed class TransportStreamParser : ITransportStreamParser
         }
     }
 
-    private void ParsePmt(int programId, byte[] data, int offset)
+    private void ParsePmt(int programId, byte[] data)
     {
-        if (data[offset] != 0x02)
+        if (data[0] != 0x02 || data.Length < 12)
         {
             return;
         }
 
-        var sectionLength = GetSectionLength(data, offset);
-        var end = Math.Min(offset + 3 + sectionLength - 4, PacketSize);
-        var pcrPid = ((data[offset + 8] & 0x1F) << 8) | data[offset + 9];
-        var programInfoLength = ((data[offset + 10] & 0x0F) << 8) | data[offset + 11];
-        var cursor = offset + 12 + programInfoLength;
+        var sectionLength = GetSectionLength(data, 0);
+        var end = Math.Min(3 + sectionLength - 4, data.Length);
+        var pcrPid = ((data[8] & 0x1F) << 8) | data[9];
+        var programInfoLength = ((data[10] & 0x0F) << 8) | data[11];
+        var cursor = 12 + programInfoLength;
         int? videoPid = null;
         var audioPids = new List<int>();
         var scrambled = false;
@@ -183,16 +194,16 @@ public sealed class TransportStreamParser : ITransportStreamParser
         _pmts[programId] = new PmtInfo(pcrPid, videoPid, audioPids, scrambled);
     }
 
-    private void ParseSdt(byte[] data, int offset)
+    private void ParseSdt(byte[] data)
     {
-        if (data[offset] is not (0x42 or 0x46))
+        if (data[0] is not (0x42 or 0x46) || data.Length < 11)
         {
             return;
         }
 
-        var sectionLength = GetSectionLength(data, offset);
-        var end = Math.Min(offset + 3 + sectionLength - 4, PacketSize);
-        var cursor = offset + 11;
+        var sectionLength = GetSectionLength(data, 0);
+        var end = Math.Min(3 + sectionLength - 4, data.Length);
+        var cursor = 11;
 
         while (cursor + 5 <= end)
         {
@@ -283,6 +294,90 @@ public sealed class TransportStreamParser : ITransportStreamParser
     private sealed record PmtInfo(int PcrPid, int? VideoPid, IReadOnlyList<int> AudioPids, bool IsScrambled);
 
     private sealed record SdtInfo(string ProviderName, string ServiceName);
+
+    private sealed class SectionAssembler
+    {
+        private readonly List<byte> _buffer = [];
+        private int? _expectedLength;
+
+        public IEnumerable<byte[]> Push(byte[] payload, int offset, int length, bool payloadUnitStart)
+        {
+            if (length <= 0)
+            {
+                yield break;
+            }
+
+            var cursor = offset;
+            var end = offset + length;
+
+            if (payloadUnitStart)
+            {
+                var pointerField = payload[cursor];
+                cursor++;
+                var sectionStart = cursor + pointerField;
+                if (sectionStart > end)
+                {
+                    Reset();
+                    yield break;
+                }
+
+                Reset();
+                cursor = sectionStart;
+            }
+
+            while (cursor < end)
+            {
+                if (_buffer.Count == 0 && payload[cursor] == 0xFF)
+                {
+                    yield break;
+                }
+
+                var needed = _expectedLength.HasValue
+                    ? _expectedLength.Value - _buffer.Count
+                    : Math.Min(3 - _buffer.Count, end - cursor);
+                var take = Math.Min(needed, end - cursor);
+                for (var i = 0; i < take; i++)
+                {
+                    _buffer.Add(payload[cursor + i]);
+                }
+
+                cursor += take;
+
+                if (!_expectedLength.HasValue && _buffer.Count >= 3)
+                {
+                    var sectionLength = ((_buffer[1] & 0x0F) << 8) | _buffer[2];
+                    _expectedLength = 3 + sectionLength;
+                    if (_expectedLength is < 3 or > 4096)
+                    {
+                        Reset();
+                        yield break;
+                    }
+                }
+
+                if (_expectedLength.HasValue && _buffer.Count >= _expectedLength.Value)
+                {
+                    yield return _buffer.Take(_expectedLength.Value).ToArray();
+                    Reset();
+                }
+
+                if (!payloadUnitStart)
+                {
+                    continue;
+                }
+
+                if (cursor < end && payload[cursor] == 0xFF)
+                {
+                    yield break;
+                }
+            }
+        }
+
+        private void Reset()
+        {
+            _buffer.Clear();
+            _expectedLength = null;
+        }
+    }
 }
 
 file static class StreamExtensions

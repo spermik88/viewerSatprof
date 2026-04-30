@@ -13,7 +13,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Found channels and edited transponders are stored under `%LOCALAPPDATA%\DvbSatelliteTv`.
 - MPEG-TS file parsing is available from the UI through `Parse TS`.
 - BDA TS recording is available from the UI through `Record TS`; it writes a short capture to `%LOCALAPPDATA%\DvbSatelliteTv\captures` and parses it when bytes are produced.
-- TS parser currently reads PAT, PMT, SDT, service name, provider, video PID, audio PIDs, and basic scrambled flag.
+- TS parser currently reads multi-packet PAT, PMT, SDT sections, service name, provider, video PID, audio PIDs, and basic scrambled flag.
 - Built-in TV preview is still a placeholder. libVLC will be connected after a live TS path exists.
 
 ## Projects
@@ -23,6 +23,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - `DvbSatelliteTv.Device` - BDA/DirectShow device detection, tune monitor, and graph probe.
 - `DvbSatelliteTv.Storage` - local JSON storage.
 - `DvbSatelliteTv.Transport` - MPEG-TS parser.
+- `DvbSatelliteTv.Tests` - unit tests for transport parsing.
 - `DvbSatelliteTv.App\Data\hotbird-13e-transponders.json` - bundled offline Hotbird 13E transponder seed list.
 
 ## Key Files
@@ -32,6 +33,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - `DvbSatelliteTv.Device\BdaTransportStreamRecorder.cs` - builds a recording graph and connects Prof TS Capture to DirectShow FileWriter.
 - `DvbSatelliteTv.Device\BdaTuneMonitor.cs` - wraps manual tune diagnostics for the UI.
 - `DvbSatelliteTv.Transport\TransportStreamParser.cs` - parses `.ts` files and extracts services from PAT/PMT/SDT.
+- `DvbSatelliteTv.Tests\TransportStreamParserTests.cs` - synthetic TS coverage for PAT/PMT/SDT parsing.
 
 ## Next Steps
 
@@ -45,5 +47,6 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 
 ```powershell
 dotnet build .\DvbSatelliteTv.slnx
+dotnet test .\DvbSatelliteTv.slnx
 dotnet run --project .\DvbSatelliteTv.App\DvbSatelliteTv.App.csproj
 ```
