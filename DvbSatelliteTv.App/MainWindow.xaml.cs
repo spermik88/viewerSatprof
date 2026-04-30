@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Diagnostics;
 using DvbSatelliteTv.Core;
 using DvbSatelliteTv.Device;
 using DvbSatelliteTv.Storage;
@@ -18,6 +19,7 @@ public partial class MainWindow : Window
     private readonly TransponderStore _transponderStore;
     private readonly ReceiverSettingsStore _settingsStore;
     private readonly string _diagnosticsDirectory;
+    private readonly string _capturesDirectory;
     private readonly List<Transponder> _transponders = [];
     private readonly List<Channel> _channels = [];
     private readonly List<BdaFilterInfo> _bdaFilters = [];
@@ -45,6 +47,7 @@ public partial class MainWindow : Window
         _channelStore = new ChannelStore(System.IO.Path.Combine(appDataPath, "channels-hotbird-13e.json"));
         _settingsStore = new ReceiverSettingsStore(System.IO.Path.Combine(appDataPath, "receiver-settings.json"));
         _diagnosticsDirectory = System.IO.Path.Combine(appDataPath, "diagnostics");
+        _capturesDirectory = System.IO.Path.Combine(appDataPath, "captures");
         _transponderStore = new TransponderStore(
             System.IO.Path.Combine(appDataPath, HotbirdDefaults.TransponderFileName),
             bundledTranspondersPath);
@@ -283,9 +286,7 @@ public partial class MainWindow : Window
             }
 
             var capturePath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DvbSatelliteTv",
-                "captures",
+                _capturesDirectory,
                 $"hotbird-{DateTime.Now:yyyyMMdd-HHmmss}-{transponder.FrequencyMhz}-{transponder.Polarization}.ts");
 
             Log($"TS recording started: {capturePath}");
@@ -361,6 +362,55 @@ public partial class MainWindow : Window
         ScanProgressBar.Value = 0;
         ScanStatusText.Text = "Idle";
         Log("Channel list cleared.");
+    }
+
+    private void DeleteTransponderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = TranspondersGrid.SelectedItems
+            .OfType<Transponder>()
+            .ToList();
+
+        if (selected.Count == 0)
+        {
+            Log("No transponders selected for deletion.");
+            return;
+        }
+
+        foreach (var transponder in selected)
+        {
+            _transponders.Remove(transponder);
+        }
+
+        TranspondersGrid.Items.Refresh();
+        ScanSelectedButton.IsEnabled = false;
+        DeleteTransponderButton.IsEnabled = false;
+        Log($"Deleted {selected.Count} transponder(s). Use Save Channels to persist the list.");
+    }
+
+    private async void ResetTranspondersButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var seed = await _transponderStore.ResetToSeedAsync();
+            _transponders.Clear();
+            _transponders.AddRange(seed);
+            TranspondersGrid.Items.Refresh();
+            Log($"Transponder list reset to seed: {_transponders.Count} item(s).");
+        }
+        catch (Exception ex)
+        {
+            Log($"Transponder reset failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private void OpenCapturesButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenFolder(_capturesDirectory, "captures");
+    }
+
+    private void OpenDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenFolder(_diagnosticsDirectory, "diagnostics");
     }
 
     private async Task RunScanAsync(IReadOnlyList<Transponder> transponders, string label, bool clearChannels)
@@ -475,6 +525,7 @@ public partial class MainWindow : Window
     private void TranspondersGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         ScanSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && ScanButton.IsEnabled;
+        DeleteTransponderButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
 
         if (TranspondersGrid.SelectedItem is not Transponder transponder)
         {
@@ -485,6 +536,24 @@ public partial class MainWindow : Window
         SymbolRateBox.Text = transponder.SymbolRateKsps.ToString();
         PolarizationBox.SelectedIndex = transponder.Polarization == Polarization.Horizontal ? 0 : 1;
         Log($"Selected transponder: {transponder.FrequencyMhz} {transponder.Polarization} SR {transponder.SymbolRateKsps}.");
+    }
+
+    private void OpenFolder(string path, string label)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+            Log($"Opened {label} folder: {path}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Could not open {label} folder: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private bool TryReadManualTransponder(out Transponder transponder)

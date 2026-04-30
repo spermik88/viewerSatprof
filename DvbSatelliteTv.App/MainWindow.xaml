@@ -71,7 +71,9 @@
                                 <ComboBoxItem Content="Horizontal" />
                                 <ComboBoxItem Content="Vertical" />
                             </ComboBox>
-                            <Button Content="Add" Width="72" Height="28" Click="AddTransponderButton_Click" />
+                            <Button Content="Add" Width="64" Height="28" Margin="0,0,6,0" Click="AddTransponderButton_Click" />
+                            <Button x:Name="DeleteTransponderButton" Content="Delete" Width="64" Height="28" Margin="0,0,6,0" IsEnabled="False" Click="DeleteTransponderButton_Click" />
+                            <Button Content="Reset" Width="64" Height="28" Click="ResetTranspondersButton_Click" />
                         </StackPanel>
                     </StackPanel>
                     <DataGrid x:Name="TranspondersGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" SelectionChanged="TranspondersGrid_SelectionChanged">
@@ -162,6 +164,10 @@
         <Border Grid.Row="2" Background="White" BorderBrush="#D8DEE4" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,12,0,0">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="Diagnostics" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,6">
+                    <Button Content="Open Captures" Width="110" Height="26" Margin="0,0,6,0" Click="OpenCapturesButton_Click" />
+                    <Button Content="Open Diagnostics" Width="130" Height="26" Click="OpenDiagnosticsButton_Click" />
+                </StackPanel>
                 <ListBox x:Name="LogList" />
             </DockPanel>
         </Border>

@@ -9,6 +9,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Manual Hotbird 13E transponder list is loaded from JSON.
 - Manual transponder entry is available.
 - Selected transponders can be copied into the tune fields and scanned independently with `Scan Selected`.
+- Transponder list management includes add, delete selected, and reset to the bundled Hotbird seed list.
 - Tune Monitor calculates IF, 22 kHz tone, LNB 13/18V, builds a BDA graph, submits a DVB-S tune request, starts the graph, and reads lock/signal when the driver exposes it.
 - Scan flow now uses the BDA recording path: tune transponder, record a short TS sample, parse services, and append channels.
 - Scan results are summarized in the UI and duplicate channels are filtered by frequency, polarization, and service id.
@@ -19,6 +20,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Receiver settings are editable in the UI: LNB low/high oscillator, switch frequency, and TS capture duration.
 - Tune, record, and scan diagnostics include DirectShow filter pin dumps for the BDA graph.
 - Tune and record diagnostics are saved as `.log` files under `%LOCALAPPDATA%\DvbSatelliteTv\diagnostics`.
+- UI buttons can open the captures and diagnostics folders directly.
 - Tune diagnostics include BDA topology, control node interfaces, and direct node tune HRESULTs for Prof driver troubleshooting.
 - BDA probe tries fallback graph strategies including `ICaptureGraphBuilder2.RenderStream`, explicit `CreatePin`, and `CreateTopology` diagnostics.
 - Prof 7301 tuning uses a tuning-space-first fallback; with this order the BDA graph can connect Network Provider -> Tuner after submitting the tune request.

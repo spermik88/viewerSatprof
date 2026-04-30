@@ -61,6 +61,13 @@ public sealed class TransponderStore
         return transponders is { Count: > 0 } ? transponders : HotbirdDefaults.FallbackTransponders;
     }
 
+    public async Task<IReadOnlyList<Transponder>> ResetToSeedAsync(CancellationToken cancellationToken = default)
+    {
+        var seed = await LoadSeedAsync(cancellationToken);
+        await SaveAsync(seed, cancellationToken);
+        return seed;
+    }
+
     private async Task<IReadOnlyList<Transponder>> LoadSeedAsync(CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(_seedPath) && File.Exists(_seedPath))
