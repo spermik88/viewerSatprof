@@ -23,6 +23,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
         IBaseFilter? networkProvider = null;
         IBaseFilter? tuner = null;
         IBaseFilter? transport = null;
+        IBaseFilter? nullRenderer = null;
         var graphCreated = false;
         var networkProviderAdded = false;
         var tunerAdded = false;
@@ -64,7 +65,6 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             diagnostics.Add("Prof BDA tuner filter added.");
             DirectShowDiagnostics.DumpPins(tuner, "Prof BDA Tuner/Demod", diagnostics);
             BdaTopologyDiagnostics.DumpTunerCapabilities(tuner, diagnostics);
-            BdaTopologyDiagnostics.TryApplyDirectNodeTune(tuner, request, diagnostics);
 
             transport = FindAndCreateFilter(BdaReceiverComponentCategory, "Prof", diagnostics);
             if (transport is null)
@@ -85,20 +85,37 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
                 tunerConnected = TryRenderStream(captureGraphBuilder, networkProvider, tuner, diagnostics, "Network Provider -> Tuner");
             }
 
+            tuneRequestSubmitted = TrySubmitTuneRequest(networkProvider, request, diagnostics);
+            if (tuneRequestSubmitted && !tunerConnected)
+            {
+                tunerConnected = TryConnect(graph, networkProvider, tuner, diagnostics, "Network Provider -> Tuner after tune");
+                if (!tunerConnected && captureGraphBuilder is not null)
+                {
+                    tunerConnected = TryRenderStream(captureGraphBuilder, networkProvider, tuner, diagnostics, "Network Provider -> Tuner after tune");
+                }
+            }
+
             transportConnected = TryConnect(graph, tuner, transport, diagnostics, "Tuner -> TS Capture");
             if (!transportConnected && captureGraphBuilder is not null)
             {
                 transportConnected = TryRenderStream(captureGraphBuilder, tuner, transport, diagnostics, "Tuner -> TS Capture");
             }
 
-            tuneRequestSubmitted = TrySubmitTuneRequest(networkProvider, request, diagnostics);
+            nullRenderer = (IBaseFilter)new NullRenderer();
+            hr = graph.AddFilter(nullRenderer, "TS Null Renderer");
+            diagnostics.Add($"TS Null Renderer AddFilter returned 0x{hr:X8}.");
+            if (hr == 0)
+            {
+                DirectShowDiagnostics.DumpPins(nullRenderer, "TS Null Renderer", diagnostics);
+                TryConnect(graph, transport, nullRenderer, diagnostics, "TS Capture -> NullRenderer");
+            }
 
             var mediaControl = (IMediaControl)graph;
             hr = mediaControl.Run();
-            if (hr == 0)
+            if (hr >= 0)
             {
                 graphRan = true;
-                diagnostics.Add("FilterGraph running.");
+                diagnostics.Add($"FilterGraph running, Run returned 0x{hr:X8}.");
                 Thread.Sleep(2500);
                 ReadSignalStatistics(tuner, diagnostics, out signalLocked, out signalStrength, out signalQuality);
                 mediaControl.Stop();
@@ -119,6 +136,7 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
         }
         finally
         {
+            ReleaseCom(nullRenderer);
             ReleaseCom(transport);
             ReleaseCom(tuner);
             ReleaseCom(networkProvider);
@@ -180,11 +198,22 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             DsError.ThrowExceptionForHR(locator.put_OrbitalPosition(130));
             DsError.ThrowExceptionForHR(locator.put_WestPosition(false));
 
-            DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).put_DefaultLocator(locator));
-            DsError.ThrowExceptionForHR(tuner.put_TuningSpace((ITuningSpace)tuningSpace));
+            TryRegisterTuningSpace((ITuningSpace)tuningSpace, diagnostics);
+            if (!TryApplyTuningSpace(tuner, (ITuningSpace)tuningSpace, locator, diagnostics, "registered/default-locator-first"))
+            {
+                diagnostics.Add("Tune request: retrying with tuning-space-first order.");
+                DsError.ThrowExceptionForHR(tuner.put_TuningSpace((ITuningSpace)tuningSpace));
+                diagnostics.Add("Tune request: tuning-space-first put_TuningSpace succeeded.");
+                DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).put_DefaultLocator(locator));
+                diagnostics.Add("Tune request: tuning-space-first default locator assigned.");
+            }
+
             DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).CreateTuneRequest(out tuneRequest));
+            diagnostics.Add("Tune request: CreateTuneRequest succeeded.");
             DsError.ThrowExceptionForHR(tuneRequest.put_Locator(locator));
+            diagnostics.Add("Tune request: tune request locator assigned.");
             DsError.ThrowExceptionForHR(tuner.Validate(tuneRequest));
+            diagnostics.Add("Tune request: Validate succeeded.");
             DsError.ThrowExceptionForHR(tuner.put_TuneRequest(tuneRequest));
 
             diagnostics.Add($"Tune request submitted: {request.FrequencyMhz} MHz {request.Polarization}, SR {request.SymbolRateKsps} KS/s.");
@@ -200,6 +229,57 @@ public sealed class BdaGraphBuilder : IBdaGraphBuilder
             ReleaseCom(tuneRequest);
             ReleaseCom(locator);
             ReleaseCom(tuningSpace);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryApplyTuningSpace(
+        ITuner tuner,
+        ITuningSpace tuningSpace,
+        IDVBSLocator locator,
+        List<string> diagnostics,
+        string label)
+    {
+        try
+        {
+            DsError.ThrowExceptionForHR(tuningSpace.put_DefaultLocator(locator));
+            diagnostics.Add($"Tune request {label}: default locator assigned.");
+            DsError.ThrowExceptionForHR(tuner.put_TuningSpace(tuningSpace));
+            diagnostics.Add($"Tune request {label}: put_TuningSpace succeeded.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"Tune request {label}: failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void TryRegisterTuningSpace(ITuningSpace tuningSpace, List<string> diagnostics)
+    {
+        ITuningSpaceContainer? container = null;
+
+        try
+        {
+            container = (ITuningSpaceContainer)new SystemTuningSpaces();
+            var hr = container.FindID(tuningSpace, out var existingId);
+            diagnostics.Add($"SystemTuningSpaces FindID returned 0x{hr:X8}, id={existingId}.");
+            if (hr == 0 && existingId > 0)
+            {
+                return;
+            }
+
+            hr = container.Add(tuningSpace, out var newId);
+            diagnostics.Add($"SystemTuningSpaces Add returned 0x{hr:X8}, id={newId}.");
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"SystemTuningSpaces registration failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            ReleaseCom(container);
         }
     }
 

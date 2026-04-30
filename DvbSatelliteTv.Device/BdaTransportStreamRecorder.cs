@@ -269,10 +269,15 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             DsError.ThrowExceptionForHR(locator.put_OrbitalPosition(130));
             DsError.ThrowExceptionForHR(locator.put_WestPosition(false));
 
-            diagnostics.Add("Tune request: assigning default locator.");
-            DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).put_DefaultLocator(locator));
-            diagnostics.Add("Tune request: assigning tuning space to network provider.");
-            DsError.ThrowExceptionForHR(tuner.put_TuningSpace((ITuningSpace)tuningSpace));
+            if (!TryApplyTuningSpace(tuner, (ITuningSpace)tuningSpace, locator, diagnostics, "default-locator-first"))
+            {
+                diagnostics.Add("Tune request: retrying with tuning-space-first order.");
+                DsError.ThrowExceptionForHR(tuner.put_TuningSpace((ITuningSpace)tuningSpace));
+                diagnostics.Add("Tune request: tuning-space-first put_TuningSpace succeeded.");
+                DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).put_DefaultLocator(locator));
+                diagnostics.Add("Tune request: tuning-space-first default locator assigned.");
+            }
+
             diagnostics.Add("Tune request: creating tune request.");
             DsError.ThrowExceptionForHR(((ITuningSpace)tuningSpace).CreateTuneRequest(out tuneRequest));
             diagnostics.Add("Tune request: assigning locator.");
@@ -294,6 +299,29 @@ public sealed class BdaTransportStreamRecorder : ITransportStreamRecorder
             ReleaseCom(tuneRequest);
             ReleaseCom(locator);
             ReleaseCom(tuningSpace);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryApplyTuningSpace(
+        ITuner tuner,
+        ITuningSpace tuningSpace,
+        IDVBSLocator locator,
+        List<string> diagnostics,
+        string label)
+    {
+        try
+        {
+            DsError.ThrowExceptionForHR(tuningSpace.put_DefaultLocator(locator));
+            diagnostics.Add($"Tune request {label}: default locator assigned.");
+            DsError.ThrowExceptionForHR(tuner.put_TuningSpace(tuningSpace));
+            diagnostics.Add($"Tune request {label}: put_TuningSpace succeeded.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"Tune request {label}: failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
         }
     }
 

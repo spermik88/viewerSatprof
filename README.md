@@ -20,6 +20,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - Tune and record diagnostics are saved as `.log` files under `%LOCALAPPDATA%\DvbSatelliteTv\diagnostics`.
 - Tune diagnostics include BDA topology, control node interfaces, and direct node tune HRESULTs for Prof driver troubleshooting.
 - BDA probe tries fallback graph strategies including `ICaptureGraphBuilder2.RenderStream`, explicit `CreatePin`, and `CreateTopology` diagnostics.
+- Prof 7301 tuning uses a tuning-space-first fallback; with this order the BDA graph can connect Network Provider -> Tuner after submitting the tune request.
 - TS parser currently reads multi-packet PAT, PMT, SDT sections, service name, provider, video PID, audio PIDs, and basic scrambled flag.
 - Built-in TV preview is still a placeholder. libVLC will be connected after a live TS path exists.
 
