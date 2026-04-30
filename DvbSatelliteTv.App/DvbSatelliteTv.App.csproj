@@ -12,6 +12,7 @@
     <ProjectReference Include="..\DvbSatelliteTv.Core\DvbSatelliteTv.Core.csproj" />
     <ProjectReference Include="..\DvbSatelliteTv.Device\DvbSatelliteTv.Device.csproj" />
     <ProjectReference Include="..\DvbSatelliteTv.Storage\DvbSatelliteTv.Storage.csproj" />
+    <ProjectReference Include="..\DvbSatelliteTv.Transport\DvbSatelliteTv.Transport.csproj" />
   </ItemGroup>
 
   <ItemGroup>

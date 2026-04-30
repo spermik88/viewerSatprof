@@ -2,6 +2,8 @@ using System.Windows;
 using DvbSatelliteTv.Core;
 using DvbSatelliteTv.Device;
 using DvbSatelliteTv.Storage;
+using DvbSatelliteTv.Transport;
+using Microsoft.Win32;
 
 namespace DvbSatelliteTv.App;
 
@@ -10,6 +12,7 @@ public partial class MainWindow : Window
     private readonly IBdaDeviceDetector _bdaDeviceDetector = new BdaDeviceDetector();
     private readonly IDvbDevice _device;
     private readonly ITuneMonitor _tuneMonitor;
+    private readonly ITransportStreamParser _transportStreamParser = new TransportStreamParser();
     private readonly ChannelStore _channelStore;
     private readonly TransponderStore _transponderStore;
     private readonly List<Transponder> _transponders = [];
@@ -194,6 +197,55 @@ public partial class MainWindow : Window
         await _channelStore.SaveAsync(_channels);
         await _transponderStore.SaveAsync(_transponders);
         Log($"Saved {_channels.Count} channels and {_transponders.Count} transponders to local app data.");
+    }
+
+    private async void ParseTsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Open MPEG-TS file",
+            Filter = "Transport Stream (*.ts;*.mts)|*.ts;*.mts|All files (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        ParseTsButton.IsEnabled = false;
+
+        try
+        {
+            Log($"TS parse started: {dialog.FileName}");
+            var result = await _transportStreamParser.ParseFileAsync(dialog.FileName);
+
+            _channels.Clear();
+            _channels.AddRange(result.Services.Select(service => new Channel(
+                service.Name,
+                FrequencyMhz: 0,
+                SymbolRateKsps: 0,
+                Polarization.Vertical,
+                service.ServiceId,
+                service.VideoPid ?? 0,
+                service.AudioPids.FirstOrDefault(),
+                !service.IsScrambled)));
+            ChannelsGrid.Items.Refresh();
+
+            foreach (var diagnostic in result.Diagnostics)
+            {
+                Log($"TS: {diagnostic}");
+            }
+
+            Log($"TS parse completed: {result.Services.Count} service(s).");
+        }
+        catch (Exception ex)
+        {
+            Log($"TS parse failed: {ex.Message}");
+        }
+        finally
+        {
+            ParseTsButton.IsEnabled = true;
+        }
     }
 
     private void CancelScanButton_Click(object sender, RoutedEventArgs e)

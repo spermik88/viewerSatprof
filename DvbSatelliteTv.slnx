@@ -3,4 +3,5 @@
   <Project Path="DvbSatelliteTv.Core/DvbSatelliteTv.Core.csproj" />
   <Project Path="DvbSatelliteTv.Device/DvbSatelliteTv.Device.csproj" />
   <Project Path="DvbSatelliteTv.Storage/DvbSatelliteTv.Storage.csproj" />
+  <Project Path="DvbSatelliteTv.Transport/DvbSatelliteTv.Transport.csproj" />
 </Solution>

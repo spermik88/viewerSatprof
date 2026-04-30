@@ -1,42 +1,45 @@
 # DVB-S/S2 Satellite TV
 
-Базовый Windows 10 проект для будущего приема DVB-S/S2 через BDA-совместимую карту, ориентирован на Prof Revolution 7300/7301 и Hotbird 13E.
+Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Revolution 7300/7301 card, targeting Hotbird 13E.
 
-## Текущий статус
+## Current Status
 
-- Приложение запускается как WPF UI.
-- Реального DVB-устройства пока нет, используется `FakeDvbDevice`.
-- Есть список стартовых транспондеров Hotbird 13E.
-- Есть ручное добавление транспондера.
-- Есть отмена сканирования, прогресс и статус текущего транспондера.
-- Есть BDA/DirectShow detector для поиска DVB/AVStream фильтров в Windows.
-- Есть ручной Tune Monitor: расчет IF, 22 kHz, LNB 13/18V, проверка Prof BDA tuner/TS capture, сборка BDA graph, отправка DVB-S tune request и чтение lock/signal при поддержке драйвером.
-- Есть симуляция сканирования и найденных FTA-каналов.
-- При старте загружаются ранее сохраненные каналы.
-- Найденные каналы сохраняются в `%LOCALAPPDATA%\DvbSatelliteTv\channels-hotbird-13e.json`.
-- Рабочий список транспондеров сохраняется в `%LOCALAPPDATA%\DvbSatelliteTv\hotbird-13e-transponders.json`.
-- Окно просмотра пока заглушка. libVLC будет подключен после появления реального transport stream path.
+- WPF application shell is available.
+- Prof/BDA device detection is implemented.
+- Manual Hotbird 13E transponder list is loaded from JSON.
+- Manual transponder entry is available.
+- Tune Monitor calculates IF, 22 kHz tone, LNB 13/18V, builds a BDA graph, submits a DVB-S tune request, starts the graph, and reads lock/signal when the driver exposes it.
+- Scan flow is still simulated until stable lock and TS capture are verified.
+- Found channels and edited transponders are stored under `%LOCALAPPDATA%\DvbSatelliteTv`.
+- MPEG-TS file parsing is available from the UI through `Parse TS`.
+- TS parser currently reads PAT, PMT, SDT, service name, provider, video PID, audio PIDs, and basic scrambled flag.
+- Built-in TV preview is still a placeholder. libVLC will be connected after a live TS path exists.
 
-## Проекты
+## Projects
 
-- `DvbSatelliteTv.App` - WPF интерфейс.
-- `DvbSatelliteTv.Core` - модели, интерфейсы и дефолты Hotbird.
-- `DvbSatelliteTv.Device` - слой DVB-устройства, сейчас симулятор.
-- `DvbSatelliteTv.Device\BdaDeviceDetector.cs` - перечисление BDA Network Tuner, BDA Receiver/TS и DVB-like Capture фильтров.
-- `DvbSatelliteTv.Device\BdaTuneMonitor.cs` - подготовка параметров ручной настройки перед реальным BDA graph.
-- `DvbSatelliteTv.Device\BdaGraphBuilder.cs` - создание FilterGraph, добавление DVB-S Network Provider, Prof tuner и TS capture, соединение pins, отправка tune request, запуск graph и чтение `IBDA_SignalStatistics`.
-- `DvbSatelliteTv.Storage` - локальное хранение каналов.
-- `DvbSatelliteTv.App\Data\hotbird-13e-transponders.json` - стартовая офлайн-база транспондеров.
+- `DvbSatelliteTv.App` - WPF UI.
+- `DvbSatelliteTv.Core` - domain models and interfaces.
+- `DvbSatelliteTv.Device` - BDA/DirectShow device detection, tune monitor, and graph probe.
+- `DvbSatelliteTv.Storage` - local JSON storage.
+- `DvbSatelliteTv.Transport` - MPEG-TS parser.
+- `DvbSatelliteTv.App\Data\hotbird-13e-transponders.json` - bundled offline Hotbird 13E transponder seed list.
 
-## Следующие этапы
+## Key Files
 
-1. Проверить Tune Monitor на реальной антенне Hotbird 13E и уточнить, какие signal values отдает драйвер.
-2. Добавить TS capture sink для записи короткого `.ts` после успешного lock.
-3. Заменить `FakeDvbDevice` на `BdaDvbDevice` после появления стабильного lock.
-4. Добавить чтение MPEG-TS и парсинг PAT/PMT/SDT.
-5. Подключить libVLC для встроенного просмотра FTA-каналов.
+- `DvbSatelliteTv.Device\BdaDeviceDetector.cs` - enumerates BDA Network Tuner, BDA Receiver/TS, and DVB-like Capture filters.
+- `DvbSatelliteTv.Device\BdaGraphBuilder.cs` - creates FilterGraph, adds DVB-S Network Provider, Prof tuner, TS capture, connects pins, submits tune request, runs graph, and reads `IBDA_SignalStatistics`.
+- `DvbSatelliteTv.Device\BdaTuneMonitor.cs` - wraps manual tune diagnostics for the UI.
+- `DvbSatelliteTv.Transport\TransportStreamParser.cs` - parses `.ts` files and extracts services from PAT/PMT/SDT.
 
-## Команды
+## Next Steps
+
+1. Verify Tune Monitor with a real Hotbird 13E dish and inspect diagnostics.
+2. Add a TS capture sink to write a short `.ts` after successful lock.
+3. Connect live TS bytes to `TransportStreamParser`.
+4. Replace `FakeDvbDevice` scan flow with `BdaDvbDevice`.
+5. Connect libVLC for FTA channel preview.
+
+## Commands
 
 ```powershell
 dotnet build .\DvbSatelliteTv.slnx
