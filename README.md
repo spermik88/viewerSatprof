@@ -18,6 +18,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - MPEG-TS file parsing is available from the UI through `Parse TS`.
 - BDA TS recording is available from the UI through `Record TS`; it writes a short capture to `%LOCALAPPDATA%\DvbSatelliteTv\captures` and parses it when bytes are produced.
 - Built-in preview is available through libVLCSharp for recorded `.ts` captures (`Play Last` / `Stop`).
+- `Preview Selected` starts a recording and opens the growing `.ts` capture in the built-in libVLC preview while recording.
 - The `Cancel` button cancels active scans and single TS recordings.
 - TS recording first tries DirectShow FileWriter and can fall back to a SampleGrabber sink for `BdaMpeg2Transport` streams.
 - Receiver settings are editable in the UI: LNB low/high oscillator, switch frequency, and TS capture duration.
@@ -28,7 +29,7 @@ Windows 10 WPF prototype for DVB-S/S2 reception through a BDA-compatible Prof Re
 - BDA probe tries fallback graph strategies including `ICaptureGraphBuilder2.RenderStream`, explicit `CreatePin`, and `CreateTopology` diagnostics.
 - Prof 7301 tuning uses a tuning-space-first fallback; with this order the BDA graph can connect Network Provider -> Tuner after submitting the tune request.
 - TS parser currently reads multi-packet PAT, PMT, SDT sections, service name, provider, video PID, audio PIDs, and basic scrambled flag.
-- Live preview will reuse the libVLC preview surface once a stable live TS pipe/sink is available.
+- Live preview currently uses a timeshift `.ts` capture file; a custom pipe/sink can replace this later.
 
 ## Projects
 

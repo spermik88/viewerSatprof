@@ -23,6 +23,7 @@
                 <Button x:Name="ParseTsButton" Content="Parse TS" Width="90" Height="34" Margin="0,0,8,0" Click="ParseTsButton_Click" />
                 <Button x:Name="RecordTsButton" Content="Record TS" Width="96" Height="34" Margin="0,0,8,0" Click="RecordTsButton_Click" />
                 <Button x:Name="RecordSelectedButton" Content="Record Selected" Width="126" Height="34" Margin="0,0,8,0" IsEnabled="False" Click="RecordSelectedButton_Click" />
+                <Button x:Name="PreviewSelectedButton" Content="Preview Selected" Width="126" Height="34" Margin="0,0,8,0" IsEnabled="False" Click="PreviewSelectedButton_Click" />
                 <Button x:Name="CancelScanButton" Content="Cancel" Width="82" Height="34" Margin="0,0,8,0" IsEnabled="False" Click="CancelScanButton_Click" />
                 <Button x:Name="ClearButton" Content="Clear" Width="82" Height="34" Margin="0,0,8,0" Click="ClearButton_Click" />
                 <Button x:Name="SaveButton" Content="Save Channels" Width="120" Height="34" Click="SaveButton_Click" />

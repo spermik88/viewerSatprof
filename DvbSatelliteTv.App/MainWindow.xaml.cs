@@ -305,10 +305,22 @@ public partial class MainWindow : Window
         await RecordTransponderAsync(transponder, "selected");
     }
 
-    private async Task RecordTransponderAsync(Transponder transponder, string label)
+    private async void PreviewSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (TranspondersGrid.SelectedItem is not Transponder transponder)
+        {
+            Log("Preview was not started: no transponder selected.");
+            return;
+        }
+
+        await RecordTransponderAsync(transponder, "preview", playWhileRecording: true);
+    }
+
+    private async Task RecordTransponderAsync(Transponder transponder, string label, bool playWhileRecording = false)
     {
         RecordTsButton.IsEnabled = false;
         RecordSelectedButton.IsEnabled = false;
+        PreviewSelectedButton.IsEnabled = false;
         CancelScanButton.IsEnabled = true;
         _recordCancellation = new CancellationTokenSource();
 
@@ -325,7 +337,7 @@ public partial class MainWindow : Window
                 $"hotbird-{DateTime.Now:yyyyMMdd-HHmmss}-{transponder.FrequencyMhz}-{transponder.Polarization}.ts");
 
             Log($"TS recording started ({label}): {capturePath}");
-            var result = await _transportStreamRecorder.RecordAsync(new TsCaptureRequest(
+            var recordTask = _transportStreamRecorder.RecordAsync(new TsCaptureRequest(
                 new TuneRequest(
                     transponder.FrequencyMhz,
                     transponder.SymbolRateKsps,
@@ -336,6 +348,13 @@ public partial class MainWindow : Window
                 capturePath,
                 _settings.CaptureSeconds),
                 _recordCancellation.Token);
+
+            if (playWhileRecording)
+            {
+                await StartTimeshiftPreviewAsync(capturePath, _recordCancellation.Token);
+            }
+
+            var result = await recordTask;
 
             foreach (var diagnostic in result.Diagnostics)
             {
@@ -389,6 +408,7 @@ public partial class MainWindow : Window
         {
             RecordTsButton.IsEnabled = true;
             RecordSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
+            PreviewSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
             CancelScanButton.IsEnabled = _scanCancellation is not null;
             _recordCancellation?.Dispose();
             _recordCancellation = null;
@@ -605,6 +625,7 @@ public partial class MainWindow : Window
     {
         ScanSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && ScanButton.IsEnabled;
         RecordSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && RecordTsButton.IsEnabled;
+        PreviewSelectedButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0 && RecordTsButton.IsEnabled;
         DeleteTransponderButton.IsEnabled = TranspondersGrid.SelectedItems.Count > 0;
 
         if (TranspondersGrid.SelectedItem is not Transponder transponder)
@@ -682,6 +703,30 @@ public partial class MainWindow : Window
             PreviewStatusText.Text = "Preview failed";
             PreviewStatusText.Visibility = Visibility.Visible;
             Log($"Preview failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private async Task StartTimeshiftPreviewAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            if (!System.IO.File.Exists(path))
+            {
+                Log("Timeshift preview is waiting: capture file was not created yet.");
+                return;
+            }
+
+            PlayPreview(path);
+            Log("Timeshift preview started while recording.");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log($"Timeshift preview failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
