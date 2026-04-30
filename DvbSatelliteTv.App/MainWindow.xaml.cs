@@ -88,6 +88,11 @@ public partial class MainWindow : Window
             DeviceStatusText.Text = $"{info.Name}\nDriver: {info.Driver}\nPresent: {info.IsPresent}\n{bdaSummary}\n{info.Notes}";
             Log($"Device check: {info.Name}; present={info.IsPresent}; bdaFilters={filters.Count}.");
         }
+        catch (Exception ex)
+        {
+            DeviceStatusText.Text = $"Device detection failed\n{ex.GetType().Name}: {ex.Message}";
+            Log($"Device detection failed: {ex.GetType().Name}: {ex.Message}");
+        }
         finally
         {
             DetectButton.IsEnabled = true;
