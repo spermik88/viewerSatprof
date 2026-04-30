@@ -64,6 +64,11 @@ public sealed record BdaGraphProbeResult(
     bool TransportAdded,
     bool TunerConnected,
     bool TransportConnected,
+    bool TuneRequestSubmitted,
+    bool GraphRan,
+    bool? SignalLocked,
+    int? SignalStrength,
+    int? SignalQuality,
     IReadOnlyList<string> Diagnostics);
 
 public sealed record SignalInfo(bool HasLock, int StrengthPercent, int QualityPercent, string Message);

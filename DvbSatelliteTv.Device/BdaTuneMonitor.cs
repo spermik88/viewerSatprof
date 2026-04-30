@@ -59,15 +59,30 @@ public sealed class BdaTuneMonitor : ITuneMonitor
             diagnostics.Add($"Graph: {graphDiagnostic}");
         }
 
-        return CreateResult(
-            graphProbe.GraphCreated && graphProbe.NetworkProviderAdded && graphProbe.TunerAdded && graphProbe.TransportAdded,
+        var canTune = graphProbe.GraphCreated
+            && graphProbe.NetworkProviderAdded
+            && graphProbe.TunerAdded
+            && graphProbe.TransportAdded
+            && graphProbe.TuneRequestSubmitted;
+        var message = graphProbe.SignalLocked.HasValue
+            ? $"Tune request submitted; lock={graphProbe.SignalLocked.Value}."
+            : graphProbe.GraphRan
+                ? "Tune request submitted and graph ran; signal lock was not reported."
+                : graphProbe.TuneRequestSubmitted
+                    ? "Tune request submitted, but graph did not run."
+                    : "BDA graph probe completed, but tune request was not submitted.";
+
+        return new TuneResult(
+            canTune,
             graphProbe.TransportConnected ? "Graph connected" : "Graph probe",
             intermediateFrequency,
             useHighBand,
             voltage,
-            graphProbe.TransportConnected
-                ? "BDA graph was built and connected. Tune request submission is the next step."
-                : "BDA filters are present, but graph connection is incomplete. See diagnostics.",
+            new SignalInfo(
+                graphProbe.SignalLocked == true,
+                NormalizeSignalValue(graphProbe.SignalStrength),
+                NormalizeSignalValue(graphProbe.SignalQuality),
+                message),
             diagnostics);
     }
 
@@ -88,6 +103,16 @@ public sealed class BdaTuneMonitor : ITuneMonitor
             lnbVoltage,
             new SignalInfo(false, 0, 0, message),
             diagnostics);
+    }
+
+    private static int NormalizeSignalValue(int? rawValue)
+    {
+        if (!rawValue.HasValue)
+        {
+            return 0;
+        }
+
+        return Math.Clamp(rawValue.Value, 0, 100);
     }
 
     private static bool IsProfFilter(string value)
