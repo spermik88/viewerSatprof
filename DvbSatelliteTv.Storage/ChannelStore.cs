@@ -1,11 +1,12 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DvbSatelliteTv.Core;
 
 namespace DvbSatelliteTv.Storage;
 
 public sealed class ChannelStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = JsonOptionsFactory.CreateJsonOptions();
     private readonly string _path;
 
     public ChannelStore(string path)
@@ -34,7 +35,7 @@ public sealed class ChannelStore
 
 public sealed class TransponderStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = JsonOptionsFactory.CreateJsonOptions();
     private readonly string _path;
     private readonly string? _seedPath;
 
@@ -84,5 +85,15 @@ public sealed class TransponderStore
             transponders.OrderBy(x => x.FrequencyMhz).ThenBy(x => x.Polarization),
             Options,
             cancellationToken);
+    }
+}
+
+file static class JsonOptionsFactory
+{
+    public static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        options.Converters.Add(new JsonStringEnumConverter());
+        return options;
     }
 }
