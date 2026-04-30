@@ -9,6 +9,7 @@ public partial class MainWindow : Window
 {
     private readonly IBdaDeviceDetector _bdaDeviceDetector = new BdaDeviceDetector();
     private readonly IDvbDevice _device;
+    private readonly ITuneMonitor _tuneMonitor;
     private readonly ChannelStore _channelStore;
     private readonly TransponderStore _transponderStore;
     private readonly List<Transponder> _transponders = [];
@@ -20,6 +21,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _device = new BdaDiagnosticDevice(_bdaDeviceDetector);
+        _tuneMonitor = new BdaTuneMonitor(_bdaDeviceDetector);
         var appDataPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "DvbSatelliteTv");
@@ -137,16 +139,54 @@ public partial class MainWindow : Window
 
     private void AddTransponderButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!int.TryParse(FrequencyBox.Text, out var frequency) || !int.TryParse(SymbolRateBox.Text, out var symbolRate))
+        if (!TryReadManualTransponder(out var transponder))
         {
             Log("Manual transponder was not added: frequency or symbol rate is invalid.");
             return;
         }
 
-        var polarization = PolarizationBox.SelectedIndex == 0 ? Polarization.Horizontal : Polarization.Vertical;
-        _transponders.Add(new Transponder(frequency, symbolRate, polarization, "DVB-S/S2", "Auto", "Manual"));
+        _transponders.Add(transponder);
         TranspondersGrid.Items.Refresh();
-        Log($"Manual transponder added: {frequency} {polarization} SR {symbolRate}.");
+        Log($"Manual transponder added: {transponder.FrequencyMhz} {transponder.Polarization} SR {transponder.SymbolRateKsps}.");
+    }
+
+    private async void TuneButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryReadManualTransponder(out var transponder))
+        {
+            Log("Tune was not started: frequency or symbol rate is invalid.");
+            return;
+        }
+
+        TuneButton.IsEnabled = false;
+
+        try
+        {
+            var result = await _tuneMonitor.TuneAsync(new TuneRequest(
+                transponder.FrequencyMhz,
+                transponder.SymbolRateKsps,
+                transponder.Polarization,
+                LnbLowMhz: 9750,
+                LnbHighMhz: 10600,
+                SwitchMhz: 11700));
+
+            TuneIfText.Text = $"{result.IntermediateFrequencyMhz} MHz";
+            TuneToneText.Text = result.Use22KhzTone ? "On" : "Off";
+            TuneVoltageText.Text = $"{result.LnbVoltage}V";
+            TuneStageText.Text = result.Stage;
+            ScanStatusText.Text = result.Signal.Message;
+
+            foreach (var diagnostic in result.Diagnostics)
+            {
+                Log($"Tune: {diagnostic}");
+            }
+
+            Log($"Tune monitor result: canTune={result.CanTune}; {result.Signal.Message}");
+        }
+        finally
+        {
+            TuneButton.IsEnabled = true;
+        }
     }
 
     private async void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -168,6 +208,20 @@ public partial class MainWindow : Window
         ScanProgressBar.Value = 0;
         ScanStatusText.Text = "Idle";
         Log("Channel list cleared.");
+    }
+
+    private bool TryReadManualTransponder(out Transponder transponder)
+    {
+        transponder = new Transponder(0, 0, Polarization.Vertical, string.Empty, string.Empty, string.Empty);
+
+        if (!int.TryParse(FrequencyBox.Text, out var frequency) || !int.TryParse(SymbolRateBox.Text, out var symbolRate))
+        {
+            return false;
+        }
+
+        var polarization = PolarizationBox.SelectedIndex == 0 ? Polarization.Horizontal : Polarization.Vertical;
+        transponder = new Transponder(frequency, symbolRate, polarization, "DVB-S/S2", "Auto", "Manual");
+        return true;
     }
 
     private void Log(string message)

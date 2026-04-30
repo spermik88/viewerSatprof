@@ -70,10 +70,41 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="Built-in preview placeholder" Foreground="#DDE6ED" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <TextBlock x:Name="ScanStatusText" Grid.Row="1" Text="Idle" Foreground="#DDE6ED" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                    <ProgressBar x:Name="ScanProgressBar" Grid.Row="2" Height="12" Minimum="0" Maximum="100" Value="0" />
+                    <Border Grid.Row="1" Background="#1C2733" BorderBrush="#2D3B49" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <DockPanel>
+                                <TextBlock Text="Tune Monitor" Foreground="#DDE6ED" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button x:Name="TuneButton" DockPanel.Dock="Right" Content="Tune" Width="88" Height="28" Click="TuneButton_Click" />
+                            </DockPanel>
+                            <UniformGrid Grid.Row="1" Columns="4" Margin="0,10,0,0">
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="IF" Foreground="#93A4B1" />
+                                    <TextBlock x:Name="TuneIfText" Text="-" Foreground="#DDE6ED" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="22 kHz" Foreground="#93A4B1" />
+                                    <TextBlock x:Name="TuneToneText" Text="-" Foreground="#DDE6ED" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="LNB V" Foreground="#93A4B1" />
+                                    <TextBlock x:Name="TuneVoltageText" Text="-" Foreground="#DDE6ED" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Stage" Foreground="#93A4B1" />
+                                    <TextBlock x:Name="TuneStageText" Text="-" Foreground="#DDE6ED" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </UniformGrid>
+                        </Grid>
+                    </Border>
+                    <TextBlock x:Name="ScanStatusText" Grid.Row="2" Text="Idle" Foreground="#DDE6ED" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <ProgressBar x:Name="ScanProgressBar" Grid.Row="3" Height="12" Minimum="0" Maximum="100" Value="0" />
                 </Grid>
             </Border>
 

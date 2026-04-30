@@ -40,6 +40,23 @@ public sealed record DeviceInfo(string Name, string Driver, bool IsPresent, stri
 
 public sealed record BdaFilterInfo(string Category, string FriendlyName, string DevicePath);
 
+public sealed record TuneRequest(
+    int FrequencyMhz,
+    int SymbolRateKsps,
+    Polarization Polarization,
+    int LnbLowMhz,
+    int LnbHighMhz,
+    int SwitchMhz);
+
+public sealed record TuneResult(
+    bool CanTune,
+    string Stage,
+    int IntermediateFrequencyMhz,
+    bool Use22KhzTone,
+    int LnbVoltage,
+    SignalInfo Signal,
+    IReadOnlyList<string> Diagnostics);
+
 public sealed record SignalInfo(bool HasLock, int StrengthPercent, int QualityPercent, string Message);
 
 public sealed record ScanProgress(Transponder Transponder, ScanStatus Status, SignalInfo Signal, IReadOnlyList<Channel> Channels);
@@ -56,6 +73,11 @@ public interface IDvbDevice
 public interface IBdaDeviceDetector
 {
     Task<IReadOnlyList<BdaFilterInfo>> DetectAsync(CancellationToken cancellationToken = default);
+}
+
+public interface ITuneMonitor
+{
+    Task<TuneResult> TuneAsync(TuneRequest request, CancellationToken cancellationToken = default);
 }
 
 public static class HotbirdDefaults
